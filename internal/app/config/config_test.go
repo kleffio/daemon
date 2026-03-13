@@ -97,9 +97,10 @@ func TestConfigNodesAndPortsViaEnv(t *testing.T) {
 func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 	resetViperAndFlags()
 
-	// 1. Missing Node ID
+	// 1. Missing Node ID (Explicitly override the hostname default with an empty string)
 	os.Setenv("GSD_RUNTIME_MODE", "docker")
 	os.Setenv("GSD_QUEUE_BACKEND", "memory")
+	os.Args = []string{"cmd", "--node.id="} // Force it to evaluate an empty string
 	_, err := Load()
 	if err == nil {
 		t.Errorf("Expected validation to fail when node.id is missing")
