@@ -1,10 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	
+
+	"github.com/kleffio/gameserver-daemon/internal/adapters/out/observability/logging"
 	"github.com/kleffio/gameserver-daemon/internal/app/config"
+	"github.com/kleffio/gameserver-daemon/internal/application/ports"
 )
 
 func main() {
@@ -13,9 +14,13 @@ func main() {
 		log.Fatalf("Failed to start daemon: %v", err)
 	}
 
-	fmt.Printf("Daemon starting!\n")
-	fmt.Printf("Node ID: %s\n", cfg.NodeID)
-	fmt.Printf("Runtime Mode: %s\n", cfg.RuntimeMode)
+	// Initialize the structural logger
+	baseLogger := logging.NewSlogAdapter()
+	
+	// Globally inject the node ID into all subsequent logs via With()
+	daemonLog := baseLogger.With(ports.LogKeyNodeID, cfg.NodeID)
+
+	daemonLog.Info("Daemon starting", "runtime_mode", cfg.RuntimeMode)
 	
 	// Next we would initialize the "adapters/out/runtime" based on cfg.RuntimeMode...
 }
