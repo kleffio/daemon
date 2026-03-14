@@ -3,7 +3,7 @@ package queue_test
 import (
 	"testing"
 
-	"github.com/kleffio/gameserver-daemon/internal/adapters/in/queue"
+	"github.com/kleffio/gameserver-daemon/internal/adapters/out/queue"
 	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
 )
 
