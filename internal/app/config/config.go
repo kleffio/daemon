@@ -33,6 +33,7 @@ type Config struct {
 	GRPCPort      int          `mapstructure:"grpc.port"`
 	MetricsPort   int          `mapstructure:"metrics.port"`
 	QueueBackend  QueueBackend `mapstructure:"queue.backend"`
+	DatabasePath  string       `mapstructure:"database.path"`
 	RedisURL      string       `mapstructure:"redis.url"`
 	RedisPassword string       `mapstructure:"redis.password"`
 	RedisTLS      bool         `mapstructure:"redis.tls"`
@@ -77,6 +78,7 @@ func Load() (*Config, error) {
 	v.SetDefault("grpc.port", 50051)
 	v.SetDefault("metrics.port", 9090)
 	v.SetDefault("queue.backend", string(QueueBackendMemory))
+	v.SetDefault("database.path", "./data/kleff.db")
 	v.SetDefault("redis.url", "redis://localhost:6379/0")
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.tls", false)
@@ -121,6 +123,7 @@ func Load() (*Config, error) {
 	config.GRPCPort = v.GetInt("grpc.port")
 	config.MetricsPort = v.GetInt("metrics.port")
 	config.QueueBackend = QueueBackend(v.GetString("queue.backend"))
+	config.DatabasePath = v.GetString("database.path")
 	config.RedisURL = v.GetString("redis.url")
 	config.RedisPassword = v.GetString("redis.password")
 	config.RedisTLS = v.GetBool("redis.tls")
