@@ -1,25 +1,38 @@
-package agones
+package kubernetes
 
 import (
 	"context"
 	"fmt"
+	"time"
 
-	agonesv1 "agones.dev/agones/pkg/apis/agones/v1"
-	"agones.dev/agones/pkg/client/clientset/versioned"
 	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type AgonesRuntime struct {
-	client    versioned.Interface
+var minecraftServerGVR = schema.GroupVersionResource{
+	Group:    "kleff.io",
+	Version:  "v1alpha1",
+	Resource: "minecraftservers",
+}
+
+var gameServerGVR = schema.GroupVersionResource{
+	Group:    "agones.dev",
+	Version:  "v1",
+	Resource: "gameservers",
+}
+
+type KubernetesRuntime struct {
+	client    dynamic.Interface
 	namespace string
 }
 
-func New(kubeconfig, namespace string) (*AgonesRuntime, error) {
+func New(kubeconfig, namespace string) (*KubernetesRuntime, error) {
 	var cfg *rest.Config
 	var err error
 
@@ -32,88 +45,97 @@ func New(kubeconfig, namespace string) (*AgonesRuntime, error) {
 		return nil, fmt.Errorf("failed to build kubeconfig: %w", err)
 	}
 
-	client, err := versioned.NewForConfig(cfg)
+	client, err := dynamic.NewForConfig(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create agones client: %w", err)
+		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	return &AgonesRuntime{client: client, namespace: namespace}, nil
+	return &KubernetesRuntime{client: client, namespace: namespace}, nil
 }
 
-func (a *AgonesRuntime) Provision(ctx context.Context, name string, p ports.ProvisionPayload) (*ports.ServerRecord, error) {
-	gs := &agonesv1.GameServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: a.namespace,
-		},
-		Spec: agonesv1.GameServerSpec{
-			Container: "minecraft",
-			Ports: []agonesv1.GameServerPort{
-				{
-					Name:          "minecraft",
-					PortPolicy:    agonesv1.Dynamic,
-					ContainerPort: 25565,
-					Protocol:      corev1.ProtocolTCP,
+func (k *KubernetesRuntime) Provision(ctx context.Context, name string, p ports.ProvisionPayload) (*ports.ServerRecord, error) {
+	claim := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "kleff.io/v1alpha1",
+			"kind":       "MinecraftServer",
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": k.namespace,
+				"labels": map[string]interface{}{
+					"kleff.io/managed_by": "kleff-daemon",
 				},
 			},
-			Health: agonesv1.Health{Disabled: true},
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "minecraft",
-							Image: "itzg/minecraft-server:latest",
-							Env: []corev1.EnvVar{
-								{Name: "EULA", Value: "TRUE"},
-								{Name: "TYPE", Value: p.Type},
-								{Name: "VERSION", Value: p.Version},
-								{Name: "MAX_PLAYERS", Value: fmt.Sprintf("%d", p.MaxPlayers)},
-								{Name: "DIFFICULTY", Value: p.Difficulty},
-								{Name: "MODE", Value: p.Gamemode},
-								{Name: "VIEW_DISTANCE", Value: fmt.Sprintf("%d", p.ViewDistance)},
-								{Name: "LEVEL_SEED", Value: p.WorldSeed},
-								{Name: "ONLINE_MODE", Value: fmt.Sprintf("%t", p.OnlineMode)},
-							},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceMemory: resource.MustParse(p.Memory),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceMemory: resource.MustParse(p.Memory),
-								},
-							},
-						},
-						{
-							Name:            "mc-monitor",
-							Image:           "saulmaldonado/agones-mc",
-							Args:            []string{"monitor"},
-							ImagePullPolicy: corev1.PullAlways,
-							Env: []corev1.EnvVar{
-								{Name: "INITIAL_DELAY", Value: "30s"},
-								{Name: "MAX_ATTEMPTS", Value: "10"},
-								{Name: "INTERVAL", Value: "10s"},
-								{Name: "TIMEOUT", Value: "10s"},
-							},
-						},
-					},
-				},
+			"spec": map[string]interface{}{
+				"serverName":   p.ServerName,
+				"type":         p.Type,
+				"version":      p.Version,
+				"maxPlayers":   int64(p.MaxPlayers),
+				"difficulty":   p.Difficulty,
+				"gamemode":     p.Gamemode,
+				"viewDistance": int64(p.ViewDistance),
+				"worldSeed":    p.WorldSeed,
+				"onlineMode":   p.OnlineMode,
 			},
 		},
 	}
 
-	created, err := a.client.AgonesV1().GameServers(a.namespace).Create(ctx, gs, metav1.CreateOptions{})
+	_, err := k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Create(ctx, claim, metav1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create game server: %w", err)
+		return nil, fmt.Errorf("failed to create MinecraftServer claim: %w", err)
 	}
 
-	return &ports.ServerRecord{
-		ID:         string(created.UID),
-		Name:       created.Name,
-		Address:    "",
-		Port:       0,
-		Status:     "provisioning",
-		NodeID:     "",
-		Runtime:    "agones",
-		RuntimeRef: created.Name,
-	}, nil
+	record, err := k.waitForReady(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("server did not reach ready state: %w", err)
+	}
+
+	return record, nil
+}
+
+func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string) (*ports.ServerRecord, error) {
+	var record *ports.ServerRecord
+
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
+		gs, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+
+		state, _, _ := unstructured.NestedString(gs.Object, "status", "state")
+		if state != "Ready" {
+			return false, nil
+		}
+
+		address, _, _ := unstructured.NestedString(gs.Object, "status", "address")
+		gsPorts, _, _ := unstructured.NestedSlice(gs.Object, "status", "ports")
+		nodeName, _, _ := unstructured.NestedString(gs.Object, "status", "nodeName")
+
+		port := 0
+		if len(gsPorts) > 0 {
+			portMap, ok := gsPorts[0].(map[string]interface{})
+			if ok {
+				if p, ok := portMap["port"].(int64); ok {
+					port = int(p)
+				}
+			}
+		}
+
+		record = &ports.ServerRecord{
+			ID:         string(gs.GetUID()),
+			Name:       name,
+			Address:    address,
+			Port:       port,
+			Status:     "running",
+			NodeID:     nodeName,
+			Runtime:    "agones",
+			RuntimeRef: name,
+		}
+		return true, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
 }
