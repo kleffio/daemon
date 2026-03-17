@@ -9,6 +9,7 @@ import (
 	"github.com/kleffio/gameserver-daemon/internal/application/ports"
 	"github.com/kleffio/gameserver-daemon/internal/workers"
 	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
 	"github.com/kleffio/gameserver-daemon/pkg/labels"
 )
 
@@ -18,7 +19,7 @@ type mockRuntime struct {
 	returnErr   error
 }
 
-func (m *mockRuntime) Start(ctx context.Context, name string, p ports.ProvisionPayload) (*ports.RunningCrate, error) {
+func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
 	m.startCalled = true
 	return m.returnCrate, m.returnErr
 }
@@ -59,10 +60,10 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 	runtime := &mockRuntime{
 		returnCrate: &ports.RunningCrate{
 			Labels: labels.CrateLabels{
-				CrateID: "test-server",
+				CrateID: "test-crate",
 				NodeID:  "test-node",
 			},
-			RuntimeRef: "test-server",
+			RuntimeRef: "test-crate",
 			State:      "Ready",
 		},
 	}
@@ -71,20 +72,18 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 
 	worker := workers.NewProvisionWorker(runtime, repo, logger)
 
-	payload := workers.ProvisionPayload{
-		ServerName:   "test-server",
-		Type:         "PAPER",
-		Version:      "1.21.4",
-		MaxPlayers:   20,
-		Difficulty:   "normal",
-		Gamemode:     "survival",
-		ViewDistance: 10,
-		OnlineMode:   true,
-		Memory:       "4Gi",
-		Storage:      "10Gi",
+	payload := payloads.ServerOperationPayload{
+		OwnerID:     "owner-1",
+		CrateID:     "test-crate",
+		BlueprintID: "blueprint-1",
+		Image:       "itzg/minecraft-server:latest",
+		EnvOverrides: map[string]string{
+			"TYPE":    "PAPER",
+			"VERSION": "1.21.4",
+		},
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-crate", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -96,8 +95,8 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 	if !repo.saveCalled {
 		t.Error("expected repository.Save to be called")
 	}
-	if repo.savedRecord.RuntimeRef != "test-server" {
-		t.Errorf("expected runtime_ref test-server, got %s", repo.savedRecord.RuntimeRef)
+	if repo.savedRecord.RuntimeRef != "test-crate" {
+		t.Errorf("expected runtime_ref test-crate, got %s", repo.savedRecord.RuntimeRef)
 	}
 }
 
@@ -110,15 +109,14 @@ func TestProvisionWorkerHandleRuntimeFailure(t *testing.T) {
 
 	worker := workers.NewProvisionWorker(runtime, repo, logger)
 
-	payload := workers.ProvisionPayload{
-		ServerName: "test-server",
-		Type:       "PAPER",
-		Version:    "1.21.4",
-		Memory:     "4Gi",
-		Storage:    "10Gi",
+	payload := payloads.ServerOperationPayload{
+		OwnerID:     "owner-1",
+		CrateID:     "test-crate",
+		BlueprintID: "blueprint-1",
+		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-crate", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")
