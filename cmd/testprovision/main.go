@@ -21,7 +21,7 @@ func main() {
 
 	logger := logging.NewSlogAdapter()
 
-	runtime, err := k8sruntime.New("http://127.0.0.1:8080", "default", "kleff-control-plane")
+	runtime, err := k8sruntime.New("http://127.0.0.1:8888", "default", "kleff-control-plane")
 	if err != nil {
 		log.Fatalf("failed to init kubernetes runtime: %v", err)
 	}

@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,16 +78,20 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 	}
 
 	env := payload.EnvOverrides
+	maxPlayers, _ := strconv.ParseInt(env["MAX_PLAYERS"], 10, 64)
+	viewDistance, _ := strconv.ParseInt(env["VIEW_DISTANCE"], 10, 64)
+	onlineMode, _ := strconv.ParseBool(env["ONLINE_MODE"])
+
 	spec := map[string]interface{}{
 		"serverName":   payload.CrateID,
 		"type":         env["TYPE"],
 		"version":      env["VERSION"],
-		"maxPlayers":   env["MAX_PLAYERS"],
+		"maxPlayers":   maxPlayers,
 		"difficulty":   env["DIFFICULTY"],
 		"gamemode":     env["MODE"],
-		"viewDistance": env["VIEW_DISTANCE"],
+		"viewDistance": viewDistance,
 		"worldSeed":    env["LEVEL_SEED"],
-		"onlineMode":   env["ONLINE_MODE"],
+		"onlineMode":   onlineMode,
 	}
 
 	claim := &unstructured.Unstructured{
