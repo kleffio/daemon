@@ -9,9 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// InitDB initializes the SQLite database and ensures the schema is created.
 func InitDB(dsn string) (*sql.DB, error) {
-	// Create parent directories if they don't exist
 	dir := filepath.Dir(dsn)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)

@@ -1,32 +1,36 @@
 package ports
 
-import "context"
+import (
+	"context"
 
-type ServerRecord struct {
-	ID         string
-	Name       string
-	Address    string
-	Port       int
-	Status     string
-	NodeID     string
-	Runtime    string
+	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/gameserver-daemon/pkg/labels"
+)
+
+type RunningCrate struct {
+	Labels     labels.CrateLabels
 	RuntimeRef string
+	State      string
+}
+
+type RawStats struct {
+	CPUMillicores float64
+	MemoryBytes   int64
+	NetBytesIn    int64
+	NetBytesOut   int64
+	ActivePlayers int
 }
 
 type ContainerRuntime interface {
-	Provision(ctx context.Context, name string, payload ProvisionPayload) (*ServerRecord, error)
-}
+	Start(ctx context.Context, payload payloads.ServerOperationPayload) (*RunningCrate, error)
 
-type ProvisionPayload struct {
-	ServerName   string
-	Type         string
-	Version      string
-	MaxPlayers   int
-	Difficulty   string
-	Gamemode     string
-	ViewDistance int
-	WorldSeed    string
-	OnlineMode   bool
-	Memory       string
-	Storage      string
+	Stop(ctx context.Context, crateID string) error
+
+	Delete(ctx context.Context, crateID string) error
+
+	GetByID(ctx context.Context, crateID string) (*RunningCrate, error)
+
+	Reconcile(ctx context.Context, nodeID string) ([]*RunningCrate, error)
+
+	Stats(ctx context.Context, crateID string) (*RawStats, error)
 }

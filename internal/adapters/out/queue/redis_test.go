@@ -30,8 +30,6 @@ func TestRedisQueue_EnqueueDequeueAck(t *testing.T) {
 		t.Fatalf("enqueue failed: %v", err)
 	}
 
-	// Let miniredis catch up and then un-block BLMove by doing a fast timeout Dequeue
-	// Note: Dequeue blocks for 2 seconds, which is perfect for this test.
 	dequeued, err := q.Dequeue()
 	if err != nil {
 		t.Fatalf("dequeue failed: %v", err)
@@ -64,17 +62,14 @@ func TestRedisQueue_RetryToDelayed(t *testing.T) {
 
 	dequeued, _ := q.Dequeue()
 	
-	// Attempts is now 1
 	if err := q.Retry(dequeued.JobID); err != nil {
 		t.Fatalf("retry failed: %v", err)
 	}
 
-	// Processing should be clean
 	if mr.Exists(keyProcessing) {
 		t.Errorf("processing should be empty")
 	}
 
-	// Delayed should have 1 item
 	if !mr.Exists(keyDelayed) {
 		t.Errorf("delayed queue should exist")
 	}
@@ -92,14 +87,11 @@ func TestRedisQueue_MaxRetriesToDLQ(t *testing.T) {
 	job, _ := jobs.New(jobs.JobTypeServerStart, "res1", nil, 2) // Max attempts = 2
 	q.Enqueue(job)
 
-	// Attempt 1 -> processed
 	d1, _ := q.Dequeue()
 	
-	// We want to force it to attempt exactly equal to max attempts without waiting 5 seconds
-	// for the lua script. So we just manually increment the object's attempts.
+
 	d1.Attempts = 2
 	
-	// Put it right back into the processing queue with the mutated attempts
 	q.Acknowledge(d1.JobID)
 	q.Enqueue(d1)
 	
@@ -110,12 +102,10 @@ func TestRedisQueue_MaxRetriesToDLQ(t *testing.T) {
 		t.Fatalf("retry failed: %v", err)
 	}
 
-	// Should not be in delayed
 	if mr.Exists(keyDelayed) {
 		t.Errorf("should not be delayed")
 	}
 
-	// Should be in DLQ
 	if !mr.Exists(keyDead) {
 		t.Errorf("should be in dead letter queue")
 	}
