@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
 	"github.com/kleffio/gameserver-daemon/pkg/labels"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -62,12 +61,10 @@ func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 	return &KubernetesRuntime{client: client, namespace: namespace, nodeID: nodeID}, nil
 }
 
-func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
+func (k *KubernetesRuntime) Start(ctx context.Context, name string, p ports.ProvisionPayload) (*ports.RunningCrate, error) {
 	crateLabels := labels.CrateLabels{
-		OwnerID:     payload.OwnerID,
-		CrateID:     payload.CrateID,
-		BlueprintID: payload.BlueprintID,
-		NodeID:      k.nodeID,
+		CrateID: name,
+		NodeID:  k.nodeID,
 	}
 
 	labelMap := crateLabels.ToMap()
@@ -76,28 +73,26 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 		labelInterface[k] = v
 	}
 
-	spec := map[string]interface{}{
-		"serverName":   payload.CrateID,
-		"type":         payload.EnvOverrides["type"],
-		"version":      payload.EnvOverrides["version"],
-		"maxPlayers":   int64(20),
-		"difficulty":   "normal",
-		"gamemode":     "survival",
-		"viewDistance": int64(10),
-		"worldSeed":    "",
-		"onlineMode":   true,
-	}
-
 	claim := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "kleff.io/v1alpha1",
 			"kind":       "MinecraftServer",
 			"metadata": map[string]interface{}{
-				"name":      payload.CrateID,
+				"name":      name,
 				"namespace": k.namespace,
 				"labels":    labelInterface,
 			},
-			"spec": spec,
+			"spec": map[string]interface{}{
+				"serverName":   p.ServerName,
+				"type":         p.Type,
+				"version":      p.Version,
+				"maxPlayers":   int64(p.MaxPlayers),
+				"difficulty":   p.Difficulty,
+				"gamemode":     p.Gamemode,
+				"viewDistance": int64(p.ViewDistance),
+				"worldSeed":    p.WorldSeed,
+				"onlineMode":   p.OnlineMode,
+			},
 		},
 	}
 
@@ -106,7 +101,7 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 		return nil, fmt.Errorf("failed to create MinecraftServer claim: %w", err)
 	}
 
-	crate, err := k.waitForReady(ctx, payload.CrateID, crateLabels)
+	crate, err := k.waitForReady(ctx, name, crateLabels)
 	if err != nil {
 		return nil, fmt.Errorf("server did not reach ready state: %w", err)
 	}
