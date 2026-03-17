@@ -9,18 +9,32 @@ import (
 	"github.com/kleffio/gameserver-daemon/internal/application/ports"
 	"github.com/kleffio/gameserver-daemon/internal/workers"
 	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/gameserver-daemon/pkg/labels"
 )
 
 // Mock runtime
 type mockRuntime struct {
-	provisionCalled bool
-	returnRecord    *ports.ServerRecord
-	returnErr       error
+	startCalled bool
+	returnCrate *ports.RunningCrate
+	returnErr   error
 }
 
-func (m *mockRuntime) Provision(ctx context.Context, name string, p ports.ProvisionPayload) (*ports.ServerRecord, error) {
-	m.provisionCalled = true
-	return m.returnRecord, m.returnErr
+func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
+	m.startCalled = true
+	return m.returnCrate, m.returnErr
+}
+
+func (m *mockRuntime) Stop(ctx context.Context, crateID string) error   { return nil }
+func (m *mockRuntime) Delete(ctx context.Context, crateID string) error { return nil }
+func (m *mockRuntime) GetByID(ctx context.Context, crateID string) (*ports.RunningCrate, error) {
+	return nil, nil
+}
+func (m *mockRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningCrate, error) {
+	return nil, nil
+}
+func (m *mockRuntime) Stats(ctx context.Context, crateID string) (*ports.RawStats, error) {
+	return nil, nil
 }
 
 // Mock repository
@@ -46,12 +60,13 @@ func (m *mockRepository) UpdateStatus(ctx context.Context, id string, status str
 
 func TestProvisionWorkerHandleSuccess(t *testing.T) {
 	runtime := &mockRuntime{
-		returnRecord: &ports.ServerRecord{
-			ID:         "test-id",
-			Name:       "test-server",
-			Status:     "provisioning",
-			Runtime:    "agones",
-			RuntimeRef: "test-server",
+		returnCrate: &ports.RunningCrate{
+			Labels: labels.CrateLabels{
+				CrateID: "test-crate",
+				NodeID:  "test-node",
+			},
+			RuntimeRef: "test-crate",
+			State:      "Ready",
 		},
 	}
 	repo := &mockRepository{}
@@ -59,33 +74,27 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 
 	worker := workers.NewProvisionWorker(runtime, repo, logger)
 
-	payload := workers.ProvisionPayload{
-		ServerName:   "test-server",
-		Type:         "PAPER",
-		Version:      "1.21.4",
-		MaxPlayers:   20,
-		Difficulty:   "normal",
-		Gamemode:     "survival",
-		ViewDistance: 10,
-		OnlineMode:   true,
-		Memory:       "4Gi",
-		Storage:      "10Gi",
+	payload := payloads.ServerOperationPayload{
+		OwnerID:     "owner-1",
+		CrateID:     "test-crate",
+		BlueprintID: "blueprint-1",
+		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-crate", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if !runtime.provisionCalled {
-		t.Error("expected runtime.Provision to be called")
+	if !runtime.startCalled {
+		t.Error("expected runtime.Start to be called")
 	}
 	if !repo.saveCalled {
 		t.Error("expected repository.Save to be called")
 	}
-	if repo.savedRecord.RuntimeRef != "test-server" {
-		t.Errorf("expected runtime_ref test-server, got %s", repo.savedRecord.RuntimeRef)
+	if repo.savedRecord.RuntimeRef != "test-crate" {
+		t.Errorf("expected runtime_ref test-crate, got %s", repo.savedRecord.RuntimeRef)
 	}
 }
 
@@ -98,15 +107,14 @@ func TestProvisionWorkerHandleRuntimeFailure(t *testing.T) {
 
 	worker := workers.NewProvisionWorker(runtime, repo, logger)
 
-	payload := workers.ProvisionPayload{
-		ServerName: "test-server",
-		Type:       "PAPER",
-		Version:    "1.21.4",
-		Memory:     "4Gi",
-		Storage:    "10Gi",
+	payload := payloads.ServerOperationPayload{
+		OwnerID:     "owner-1",
+		CrateID:     "test-crate",
+		BlueprintID: "blueprint-1",
+		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-crate", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")

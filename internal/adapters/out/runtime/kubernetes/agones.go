@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/kleffio/gameserver-daemon/internal/application/ports"
+	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/gameserver-daemon/pkg/labels"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,9 +33,10 @@ var gameServerGVR = schema.GroupVersionResource{
 type KubernetesRuntime struct {
 	client    dynamic.Interface
 	namespace string
+	nodeID    string
 }
 
-func New(kubeconfig, namespace string) (*KubernetesRuntime, error) {
+func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 	var cfg *rest.Config
 	var err error
 
@@ -56,32 +59,45 @@ func New(kubeconfig, namespace string) (*KubernetesRuntime, error) {
 		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	return &KubernetesRuntime{client: client, namespace: namespace}, nil
+	return &KubernetesRuntime{client: client, namespace: namespace, nodeID: nodeID}, nil
 }
 
-func (k *KubernetesRuntime) Provision(ctx context.Context, name string, p ports.ProvisionPayload) (*ports.ServerRecord, error) {
+func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
+	crateLabels := labels.CrateLabels{
+		OwnerID:     payload.OwnerID,
+		CrateID:     payload.CrateID,
+		BlueprintID: payload.BlueprintID,
+		NodeID:      k.nodeID,
+	}
+
+	labelMap := crateLabels.ToMap()
+	labelInterface := make(map[string]interface{})
+	for k, v := range labelMap {
+		labelInterface[k] = v
+	}
+
+	spec := map[string]interface{}{
+		"serverName":   payload.CrateID,
+		"type":         payload.EnvOverrides["type"],
+		"version":      payload.EnvOverrides["version"],
+		"maxPlayers":   int64(20),
+		"difficulty":   "normal",
+		"gamemode":     "survival",
+		"viewDistance": int64(10),
+		"worldSeed":    "",
+		"onlineMode":   true,
+	}
+
 	claim := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "kleff.io/v1alpha1",
 			"kind":       "MinecraftServer",
 			"metadata": map[string]interface{}{
-				"name":      name,
+				"name":      payload.CrateID,
 				"namespace": k.namespace,
-				"labels": map[string]interface{}{
-					"kleff.io/managed_by": "kleff-daemon",
-				},
+				"labels":    labelInterface,
 			},
-			"spec": map[string]interface{}{
-				"serverName":   p.ServerName,
-				"type":         p.Type,
-				"version":      p.Version,
-				"maxPlayers":   int64(p.MaxPlayers),
-				"difficulty":   p.Difficulty,
-				"gamemode":     p.Gamemode,
-				"viewDistance": int64(p.ViewDistance),
-				"worldSeed":    p.WorldSeed,
-				"onlineMode":   p.OnlineMode,
-			},
+			"spec": spec,
 		},
 	}
 
@@ -90,16 +106,66 @@ func (k *KubernetesRuntime) Provision(ctx context.Context, name string, p ports.
 		return nil, fmt.Errorf("failed to create MinecraftServer claim: %w", err)
 	}
 
-	record, err := k.waitForReady(ctx, name)
+	crate, err := k.waitForReady(ctx, payload.CrateID, crateLabels)
 	if err != nil {
 		return nil, fmt.Errorf("server did not reach ready state: %w", err)
 	}
 
-	return record, nil
+	return crate, nil
 }
 
-func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string) (*ports.ServerRecord, error) {
-	var record *ports.ServerRecord
+func (k *KubernetesRuntime) Stop(ctx context.Context, crateID string) error {
+	return k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Delete(ctx, crateID, metav1.DeleteOptions{})
+}
+
+func (k *KubernetesRuntime) Delete(ctx context.Context, crateID string) error {
+	return k.Stop(ctx, crateID)
+}
+
+func (k *KubernetesRuntime) GetByID(ctx context.Context, crateID string) (*ports.RunningCrate, error) {
+	gs, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Get(ctx, crateID, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game server: %w", err)
+	}
+
+	state, _, _ := unstructured.NestedString(gs.Object, "status", "state")
+	rawLabels, _, _ := unstructured.NestedStringMap(gs.Object, "metadata", "labels")
+
+	return &ports.RunningCrate{
+		Labels:     labels.FromMap(rawLabels),
+		RuntimeRef: crateID,
+		State:      state,
+	}, nil
+}
+
+func (k *KubernetesRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningCrate, error) {
+	list, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("%s=%s,%s=%s", labels.ManagedBy, labels.ManagedByValue, labels.NodeID, nodeID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list game servers: %w", err)
+	}
+
+	var crates []*ports.RunningCrate
+	for _, item := range list.Items {
+		state, _, _ := unstructured.NestedString(item.Object, "status", "state")
+		rawLabels, _, _ := unstructured.NestedStringMap(item.Object, "metadata", "labels")
+		crates = append(crates, &ports.RunningCrate{
+			Labels:     labels.FromMap(rawLabels),
+			RuntimeRef: item.GetName(),
+			State:      state,
+		})
+	}
+
+	return crates, nil
+}
+
+func (k *KubernetesRuntime) Stats(ctx context.Context, crateID string) (*ports.RawStats, error) {
+	return &ports.RawStats{}, nil
+}
+
+func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, crateLabels labels.CrateLabels) (*ports.RunningCrate, error) {
+	var crate *ports.RunningCrate
 
 	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
 		gs, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Get(ctx, name, metav1.GetOptions{})
@@ -112,29 +178,10 @@ func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string) (*por
 			return false, nil
 		}
 
-		address, _, _ := unstructured.NestedString(gs.Object, "status", "address")
-		gsPorts, _, _ := unstructured.NestedSlice(gs.Object, "status", "ports")
-		nodeName, _, _ := unstructured.NestedString(gs.Object, "status", "nodeName")
-
-		port := 0
-		if len(gsPorts) > 0 {
-			portMap, ok := gsPorts[0].(map[string]interface{})
-			if ok {
-				if p, ok := portMap["port"].(int64); ok {
-					port = int(p)
-				}
-			}
-		}
-
-		record = &ports.ServerRecord{
-			ID:         string(gs.GetUID()),
-			Name:       name,
-			Address:    address,
-			Port:       port,
-			Status:     "running",
-			NodeID:     nodeName,
-			Runtime:    "agones",
+		crate = &ports.RunningCrate{
+			Labels:     crateLabels,
 			RuntimeRef: name,
+			State:      "Ready",
 		}
 		return true, nil
 	})
@@ -143,5 +190,5 @@ func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string) (*por
 		return nil, err
 	}
 
-	return record, nil
+	return crate, nil
 }
