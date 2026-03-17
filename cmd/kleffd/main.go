@@ -16,15 +16,12 @@ func main() {
 		log.Fatalf("Failed to start daemon: %v", err)
 	}
 
-	// Initialize the structural logger
 	baseLogger := logging.NewSlogAdapter()
 	
-	// Globally inject the node ID into all subsequent logs via With()
 	daemonLog := baseLogger.With(ports.LogKeyNodeID, cfg.NodeID)
 
 	daemonLog.Info("Daemon starting", "runtime_mode", cfg.RuntimeMode)
 
-	// Initialize the Database
 	sqliteDB, err := db.InitDB(cfg.DatabasePath)
 	if err != nil {
 		daemonLog.Error("Failed to initialize database", err, "path", cfg.DatabasePath)
@@ -33,5 +30,4 @@ func main() {
 	defer sqliteDB.Close()
 	daemonLog.Info("Database initialized successfully", "path", cfg.DatabasePath)
 	
-	// Next we would initialize the "adapters/out/runtime" based on cfg.RuntimeMode...
 }

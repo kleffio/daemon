@@ -20,8 +20,7 @@ const (
 	keyDead       = "repo:queue:dead"
 )
 
-// luaPromoteDelayed is an atomic script that moves jobs from delayed (ZSET) to pending (LIST)
-// when their scheduled delay time has arrived.
+
 const luaPromoteDelayed = `
 local jobs = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 100)
 for _, job in ipairs(jobs) do
@@ -35,7 +34,6 @@ type RedisQueue struct {
 	client *redis.Client
 }
 
-// NewRedisQueue initializes a new Redis connection based on configuration parameters.
 func NewRedisQueue(url, password string, useTLS bool) (*RedisQueue, error) {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
@@ -72,7 +70,6 @@ func (q *RedisQueue) Enqueue(job *jobs.Job) error {
 		return fmt.Errorf("serialize job: %w", err)
 	}
 
-	// LPush puts it on the left. Dequeue takes from the RIGHT.
 	if err := q.client.LPush(ctx, keyPending, data).Err(); err != nil {
 		return fmt.Errorf("redis lpush: %w", err)
 	}
@@ -87,13 +84,10 @@ func (q *RedisQueue) promoteDelayed(ctx context.Context) error {
 func (q *RedisQueue) Dequeue() (*jobs.Job, error) {
 	ctx := context.Background()
 
-	// 1. Atomically promote any delayed/retrying jobs whose time has come
 	if err := q.promoteDelayed(ctx); err != nil {
 		return nil, fmt.Errorf("failed to promote delayed jobs: %w", err)
 	}
 
-	// 2. Safely wait for a job using the modern BLMove (blocking Left Move)
-	// Takes from the right side of pending (queue behavior) and pushes to left of processing.
 	res, err := q.client.BLMove(ctx, keyPending, keyProcessing, "RIGHT", "LEFT", 2*time.Second).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -107,15 +101,13 @@ func (q *RedisQueue) Dequeue() (*jobs.Job, error) {
 		return nil, fmt.Errorf("failed to unmarshal dequeued job: %w", err)
 	}
 
-	// Update the internal state of the job now that we're actively working on it
 	job.Status = jobs.JobStatusProcessing
 	job.Attempts++
 
 	return &job, nil
 }
 
-// removeByJobID is a helper to find a job in a list by its logical JobID,
-// returning the raw JSON string so we can manipulate it (like with LREM).
+
 func (q *RedisQueue) removeByJobID(ctx context.Context, listKey, jobID string) (string, error) {
 	items, err := q.client.LRange(ctx, listKey, 0, -1).Result()
 	if err != nil {
@@ -125,7 +117,6 @@ func (q *RedisQueue) removeByJobID(ctx context.Context, listKey, jobID string) (
 		var j jobs.Job
 		if err := json.Unmarshal([]byte(raw), &j); err == nil {
 			if j.JobID == jobID {
-				// Found it; remove EXACTLY this raw string
 				q.client.LRem(ctx, listKey, 1, raw)
 				return raw, nil
 			}
@@ -150,15 +141,12 @@ func (q *RedisQueue) Retry(jobID string) error {
 	var job jobs.Job
 	json.Unmarshal([]byte(raw), &job)
 
-	// Since Dequeue incremented attempts, we check against MaxAttempts
 	if job.Attempts >= job.MaxAttempts {
-		// DLQ routing
 		job.Status = jobs.JobStatusFailed
 		newRaw, _ := json.Marshal(job)
 		return q.client.LPush(ctx, keyDead, newRaw).Err()
 	}
 
-	// Route to Delayed queue for backoff
 	job.Status = jobs.JobStatusPending
 	delaySeconds := int64(job.Attempts * 5)
 	runAt := time.Now().UTC().Unix() + delaySeconds

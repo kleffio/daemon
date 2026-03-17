@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// RuntimeMode defines the environment where the daemon is being deployed.
 type RuntimeMode string
 
 const (
@@ -17,7 +16,6 @@ const (
 	RuntimeModeKubernetes RuntimeMode = "kubernetes"
 )
 
-// QueueBackend defines the messaging system for distributed communication.
 type QueueBackend string
 
 const (
@@ -25,7 +23,6 @@ const (
 	QueueBackendRedis  QueueBackend = "redis"
 )
 
-// Config holds the application configuration
 type Config struct {
 	RuntimeMode   RuntimeMode  `mapstructure:"runtime.mode"`
 	ClusterRegion string       `mapstructure:"cluster.region"`
@@ -39,7 +36,6 @@ type Config struct {
 	RedisTLS      bool         `mapstructure:"redis.tls"`
 }
 
-// Validate ensures all loaded configuration variables are correct and complete before usage.
 func (c *Config) Validate() error {
 	switch c.RuntimeMode {
 	case RuntimeModeDocker, RuntimeModeKubernetes:
@@ -62,11 +58,9 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Load reads in config file and ENV variables if set.
 func Load() (*Config, error) {
 	v := viper.New()
 
-	// Default Settings
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown-node"
@@ -83,26 +77,21 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.tls", false)
 
-	// Environment Variables
 	v.SetEnvPrefix("gsd")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv() // read in environment variables that match
+	v.AutomaticEnv()
 
-	// Config File
-	v.SetConfigName("config") // name of config file (without extension)
-	v.SetConfigType("yaml")   // REQUIRED if the config file does not have the extension in the name
+	v.SetConfigName("config") 
+	v.SetConfigType("yaml")
 	v.AddConfigPath("/etc/gameserver-daemon/")
 	v.AddConfigPath(".")
 
-	// Ignore if config file is not found, we rely heavily on env vars/flags
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			// Config file was found but another error was produced
 			return nil, fmt.Errorf("fatal error config file: %w", err)
 		}
 	}
 
-	// CLI Flags
 	fs := pflag.NewFlagSet("gsd", pflag.ContinueOnError)
 	fs.ParseErrorsWhitelist.UnknownFlags = true
 
