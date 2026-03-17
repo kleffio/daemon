@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kleffio/gameserver-daemon/internal/application/ports"
@@ -38,11 +39,16 @@ func New(kubeconfig, namespace string) (*KubernetesRuntime, error) {
 
 	if kubeconfig == "" {
 		cfg, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build kubeconfig: %w", err)
+		}
+	} else if strings.HasPrefix(kubeconfig, "http") {
+		cfg = &rest.Config{Host: kubeconfig}
 	} else {
 		cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to build kubeconfig: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build kubeconfig: %w", err)
+		}
 	}
 
 	client, err := dynamic.NewForConfig(cfg)

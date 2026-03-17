@@ -3,7 +3,7 @@ data/kleff.db
 *.db
 
 # Test binary
-testprovision
+/testprovision
 
 # Build output
 *.exe
