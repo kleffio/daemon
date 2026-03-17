@@ -16,11 +16,9 @@ func resetViperAndFlags() {
 func TestConfigLoadsCorrectlyDefaults(t *testing.T) {
 	resetViperAndFlags()
 
-	// Clear out any potential environment variables that could mess up the test
 	os.Unsetenv("GSD_RUNTIME_MODE")
 	os.Unsetenv("GSD_CLUSTER_REGION")
 	
-	// Set the required NodeID via env so validation passes
 	os.Setenv("GSD_NODE_ID", "default-node")
 	defer os.Unsetenv("GSD_NODE_ID")
 
@@ -43,7 +41,6 @@ func TestConfigLoadsCorrectlyDefaults(t *testing.T) {
 func TestConfigRuntimeModeConfigurableViaEnv(t *testing.T) {
 	resetViperAndFlags()
 
-	// Set the environment variables
 	os.Setenv("GSD_NODE_ID", "env-node")
 	os.Setenv("GSD_RUNTIME_MODE", "kubernetes")
 	os.Setenv("GSD_QUEUE_BACKEND", "redis")
@@ -97,16 +94,14 @@ func TestConfigNodesAndPortsViaEnv(t *testing.T) {
 func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 	resetViperAndFlags()
 
-	// 1. Missing Node ID (Explicitly override the hostname default with an empty string)
 	os.Setenv("GSD_RUNTIME_MODE", "docker")
 	os.Setenv("GSD_QUEUE_BACKEND", "memory")
-	os.Args = []string{"cmd", "--node.id="} // Force it to evaluate an empty string
+	os.Args = []string{"cmd", "--node.id="} 
 	_, err := Load()
 	if err == nil {
 		t.Errorf("Expected validation to fail when node.id is missing")
 	}
 
-	// 2. Invalid Runtime Mode
 	resetViperAndFlags()
 	os.Setenv("GSD_NODE_ID", "valid-node")
 	os.Setenv("GSD_RUNTIME_MODE", "invalid-runtime")
@@ -115,7 +110,6 @@ func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 		t.Errorf("Expected validation to fail for invalid runtime.mode")
 	}
 
-	// 3. Invalid Queue Backend
 	resetViperAndFlags()
 	os.Setenv("GSD_NODE_ID", "valid-node")
 	os.Setenv("GSD_RUNTIME_MODE", "docker")
@@ -134,7 +128,6 @@ func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 func TestConfigPrecedence(t *testing.T) {
 	resetViperAndFlags()
 
-	// 1. Create a temporary config file simulating /etc/gameserver-daemon/config.yaml or ./config.yaml
 	yamlContent := []byte(`
 runtime:
   mode: docker
@@ -149,23 +142,20 @@ grpc:
 	}
 	defer os.Remove("config.yaml")
 
-	// 2. Set Env Var (Should override config file)
-	os.Setenv("GSD_RUNTIME_MODE", "kubernetes") // Env beats file
-	os.Setenv("GSD_NODE_ID", "env-node")        // Env beats file
+	os.Setenv("GSD_RUNTIME_MODE", "kubernetes")
+	os.Setenv("GSD_NODE_ID", "env-node")
 	defer func() {
 		os.Unsetenv("GSD_RUNTIME_MODE")
 		os.Unsetenv("GSD_NODE_ID")
 	}()
 
-	// 3. Set CLI Flags (Should override everything)
-	os.Args = []string{"cmd", "--node.id=flag-node"} // Flag beats env beats file
+	os.Args = []string{"cmd", "--node.id=flag-node"}
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Assertions based on standard precedence: Flag > Env > File > Default
 	if cfg.NodeID != "flag-node" {
 		t.Errorf("Expected node.id to be 'flag-node' (Flag precedence), got '%s'", cfg.NodeID)
 	}
