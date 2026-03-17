@@ -39,7 +39,7 @@ func TestFromMap_Valid(t *testing.T) {
 		labels.BlueprintID: "blue-789",
 		labels.NodeID:      "node-001",
 		labels.ManagedBy:   labels.ManagedByValue,
-		"some-other-label": "ignored", // Extra labels should be ignored
+		"some-other-label": "ignored", 
 	}
 
 	cl := labels.FromMap(m)
@@ -62,12 +62,11 @@ func TestFromMap_InvalidManagedBy(t *testing.T) {
 	m := map[string]string{
 		labels.OwnerID:   "user-123",
 		labels.CrateID:   "crate-456",
-		labels.ManagedBy: "some-other-system", // Not ours
+		labels.ManagedBy: "some-other-system",
 	}
 
 	cl := labels.FromMap(m)
 
-	// Should return an empty struct because the container wasn't created by us
 	if cl.OwnerID != "" || cl.CrateID != "" {
 		t.Errorf("Expected empty struct for unmanaged container, got: %+v", cl)
 	}
@@ -77,7 +76,6 @@ func TestFromMap_MissingManagedBy(t *testing.T) {
 	m := map[string]string{
 		labels.OwnerID: "user-123",
 		labels.CrateID: "crate-456",
-		// missing managed_by entirely
 	}
 
 	cl := labels.FromMap(m)
