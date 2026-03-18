@@ -1,4 +1,10 @@
-
 # Local database
 data/kleff.db
 *.db
+
+# Test binary
+/testprovision
+
+# Build output
+*.exe
+*.out
