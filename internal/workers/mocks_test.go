@@ -12,14 +12,16 @@ type mockRuntime struct {
 	returnCrate *ports.RunningCrate
 	returnErr   error
 	deleteErr   error
+	stopErr     error
 }
 
 func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
 	m.startCalled = true
 	return m.returnCrate, m.returnErr
 }
-
-func (m *mockRuntime) Stop(ctx context.Context, crateID string) error { return nil }
+func (m *mockRuntime) Stop(ctx context.Context, crateID string) error {
+	return m.stopErr
+}
 func (m *mockRuntime) Delete(ctx context.Context, crateID string) error {
 	return m.deleteErr
 }
