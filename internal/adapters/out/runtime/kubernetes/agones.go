@@ -63,15 +63,15 @@ func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 	return &KubernetesRuntime{client: client, namespace: namespace, nodeID: nodeID}, nil
 }
 
-func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
-	crateLabels := labels.CrateLabels{
+func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
+	serverLabels := labels.ServerLabels{
 		OwnerID:     payload.OwnerID,
-		CrateID:     payload.CrateID,
+		ServerID:    payload.ServerID,
 		BlueprintID: payload.BlueprintID,
 		NodeID:      k.nodeID,
 	}
 
-	labelMap := crateLabels.ToMap()
+	labelMap := serverLabels.ToMap()
 	labelInterface := make(map[string]interface{})
 	for k, v := range labelMap {
 		labelInterface[k] = v
@@ -83,7 +83,7 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 	onlineMode, _ := strconv.ParseBool(env["ONLINE_MODE"])
 
 	spec := map[string]interface{}{
-		"serverName":   payload.CrateID,
+		"serverName":   payload.ServerID,
 		"type":         env["TYPE"],
 		"version":      env["VERSION"],
 		"maxPlayers":   maxPlayers,
@@ -99,7 +99,7 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 			"apiVersion": "kleff.io/v1alpha1",
 			"kind":       "MinecraftServer",
 			"metadata": map[string]interface{}{
-				"name":      payload.CrateID,
+				"name":      payload.ServerID,
 				"namespace": k.namespace,
 				"labels":    labelInterface,
 			},
@@ -112,24 +112,24 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 		return nil, fmt.Errorf("failed to create MinecraftServer claim: %w", err)
 	}
 
-	crate, err := k.waitForReady(ctx, payload.CrateID, crateLabels)
+	server, err := k.waitForReady(ctx, payload.ServerID, serverLabels)
 	if err != nil {
 		return nil, fmt.Errorf("server did not reach ready state: %w", err)
 	}
 
-	return crate, nil
+	return server, nil
 }
 
-func (k *KubernetesRuntime) Stop(ctx context.Context, crateID string) error {
-	return k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Delete(ctx, crateID, metav1.DeleteOptions{})
+func (k *KubernetesRuntime) Stop(ctx context.Context, serverID string) error {
+	return k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Delete(ctx, serverID, metav1.DeleteOptions{})
 }
 
-func (k *KubernetesRuntime) Delete(ctx context.Context, crateID string) error {
-	return k.Stop(ctx, crateID)
+func (k *KubernetesRuntime) Delete(ctx context.Context, serverID string) error {
+	return k.Stop(ctx, serverID)
 }
 
-func (k *KubernetesRuntime) GetByID(ctx context.Context, crateID string) (*ports.RunningCrate, error) {
-	gs, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Get(ctx, crateID, metav1.GetOptions{})
+func (k *KubernetesRuntime) GetByID(ctx context.Context, serverID string) (*ports.RunningServer, error) {
+	gs, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Get(ctx, serverID, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get game server: %w", err)
 	}
@@ -137,14 +137,14 @@ func (k *KubernetesRuntime) GetByID(ctx context.Context, crateID string) (*ports
 	state, _, _ := unstructured.NestedString(gs.Object, "status", "state")
 	rawLabels, _, _ := unstructured.NestedStringMap(gs.Object, "metadata", "labels")
 
-	return &ports.RunningCrate{
+	return &ports.RunningServer{
 		Labels:     labels.FromMap(rawLabels),
-		RuntimeRef: crateID,
+		RuntimeRef: serverID,
 		State:      state,
 	}, nil
 }
 
-func (k *KubernetesRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningCrate, error) {
+func (k *KubernetesRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningServer, error) {
 	list, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s", labels.ManagedBy, labels.ManagedByValue, labels.NodeID, nodeID),
 	})
@@ -152,26 +152,26 @@ func (k *KubernetesRuntime) Reconcile(ctx context.Context, nodeID string) ([]*po
 		return nil, fmt.Errorf("failed to list game servers: %w", err)
 	}
 
-	var crates []*ports.RunningCrate
+	var servers []*ports.RunningServer
 	for _, item := range list.Items {
 		state, _, _ := unstructured.NestedString(item.Object, "status", "state")
 		rawLabels, _, _ := unstructured.NestedStringMap(item.Object, "metadata", "labels")
-		crates = append(crates, &ports.RunningCrate{
+		servers = append(servers, &ports.RunningServer{
 			Labels:     labels.FromMap(rawLabels),
 			RuntimeRef: item.GetName(),
 			State:      state,
 		})
 	}
 
-	return crates, nil
+	return servers, nil
 }
 
-func (k *KubernetesRuntime) Stats(ctx context.Context, crateID string) (*ports.RawStats, error) {
+func (k *KubernetesRuntime) Stats(ctx context.Context, serverID string) (*ports.RawStats, error) {
 	return &ports.RawStats{}, nil
 }
 
-func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, crateLabels labels.CrateLabels) (*ports.RunningCrate, error) {
-	var crate *ports.RunningCrate
+func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.ServerLabels) (*ports.RunningServer, error) {
+	var server *ports.RunningServer
 
 	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
 		gs, err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Get(ctx, name, metav1.GetOptions{})
@@ -184,8 +184,8 @@ func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, crate
 			return false, nil
 		}
 
-		crate = &ports.RunningCrate{
-			Labels:     crateLabels,
+		server = &ports.RunningServer{
+			Labels:     serverLabels,
 			RuntimeRef: name,
 			State:      "Ready",
 		}
@@ -196,5 +196,5 @@ func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, crate
 		return nil, err
 	}
 
-	return crate, nil
+	return server, nil
 }

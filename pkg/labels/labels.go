@@ -2,7 +2,7 @@ package labels
 
 const (
 	OwnerID     = "kleff.io/owner_id"
-	CrateID     = "kleff.io/crate_id"
+	ServerID    = "kleff.io/server_id"
 	BlueprintID = "kleff.io/blueprint_id"
 	NodeID      = "kleff.io/node_id"
 	ManagedBy   = "kleff.io/managed_by"
@@ -10,30 +10,30 @@ const (
 	ManagedByValue = "kleff-daemon"
 )
 
-type CrateLabels struct {
+type ServerLabels struct {
 	OwnerID     string
-	CrateID     string
+	ServerID    string
 	BlueprintID string
 	NodeID      string
 }
 
-func (l *CrateLabels) ToMap() map[string]string {
+func (l *ServerLabels) ToMap() map[string]string {
 	return map[string]string{
 		OwnerID:     l.OwnerID,
-		CrateID:     l.CrateID,
+		ServerID:    l.ServerID,
 		BlueprintID: l.BlueprintID,
 		NodeID:      l.NodeID,
 		ManagedBy:   ManagedByValue,
 	}
 }
 
-func FromMap(m map[string]string) CrateLabels {
+func FromMap(m map[string]string) ServerLabels {
 	if m[ManagedBy] != ManagedByValue {
-		return CrateLabels{}
+		return ServerLabels{}
 	}
-	return CrateLabels{
+	return ServerLabels{
 		OwnerID:     m[OwnerID],
-		CrateID:     m[CrateID],
+		ServerID:    m[ServerID],
 		BlueprintID: m[BlueprintID],
 		NodeID:      m[NodeID],
 	}

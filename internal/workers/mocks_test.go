@@ -8,28 +8,28 @@ import (
 )
 
 type mockRuntime struct {
-	startCalled bool
-	returnCrate *ports.RunningCrate
-	returnErr   error
-	deleteErr   error
+	startCalled  bool
+	returnServer *ports.RunningServer
+	returnErr    error
+	deleteErr    error
 }
 
-func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningCrate, error) {
+func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
 	m.startCalled = true
-	return m.returnCrate, m.returnErr
+	return m.returnServer, m.returnErr
 }
 
-func (m *mockRuntime) Stop(ctx context.Context, crateID string) error { return nil }
-func (m *mockRuntime) Delete(ctx context.Context, crateID string) error {
+func (m *mockRuntime) Stop(ctx context.Context, serverID string) error { return nil }
+func (m *mockRuntime) Delete(ctx context.Context, serverID string) error {
 	return m.deleteErr
 }
-func (m *mockRuntime) GetByID(ctx context.Context, crateID string) (*ports.RunningCrate, error) {
+func (m *mockRuntime) GetByID(ctx context.Context, serverID string) (*ports.RunningServer, error) {
 	return nil, nil
 }
-func (m *mockRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningCrate, error) {
+func (m *mockRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningServer, error) {
 	return nil, nil
 }
-func (m *mockRuntime) Stats(ctx context.Context, crateID string) (*ports.RawStats, error) {
+func (m *mockRuntime) Stats(ctx context.Context, serverID string) (*ports.RawStats, error) {
 	return nil, nil
 }
 

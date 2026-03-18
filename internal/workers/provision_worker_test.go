@@ -15,12 +15,12 @@ import (
 
 func TestProvisionWorkerHandleSuccess(t *testing.T) {
 	runtime := &mockRuntime{
-		returnCrate: &ports.RunningCrate{
-			Labels: labels.CrateLabels{
-				CrateID: "test-crate",
-				NodeID:  "test-node",
+		returnServer: &ports.RunningServer{
+			Labels: labels.ServerLabels{
+				ServerID: "test-server",
+				NodeID:   "test-node",
 			},
-			RuntimeRef: "test-crate",
+			RuntimeRef: "test-server",
 			State:      "Ready",
 		},
 	}
@@ -31,7 +31,7 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 
 	payload := payloads.ServerOperationPayload{
 		OwnerID:     "owner-1",
-		CrateID:     "test-crate",
+		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 		EnvOverrides: map[string]string{
@@ -40,7 +40,7 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 		},
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-crate", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -52,8 +52,8 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 	if !repo.saveCalled {
 		t.Error("expected repository.Save to be called")
 	}
-	if repo.savedRecord.RuntimeRef != "test-crate" {
-		t.Errorf("expected runtime_ref test-crate, got %s", repo.savedRecord.RuntimeRef)
+	if repo.savedRecord.RuntimeRef != "test-server" {
+		t.Errorf("expected runtime_ref test-server, got %s", repo.savedRecord.RuntimeRef)
 	}
 }
 
@@ -68,12 +68,12 @@ func TestProvisionWorkerHandleRuntimeFailure(t *testing.T) {
 
 	payload := payloads.ServerOperationPayload{
 		OwnerID:     "owner-1",
-		CrateID:     "test-crate",
+		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-crate", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")
