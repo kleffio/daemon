@@ -35,7 +35,7 @@ func main() {
 
 	payload := payloads.ServerOperationPayload{
 		OwnerID:     "owner-1",
-		CrateID:     "test-provision-2",
+		ServerID:    "test-provision-2",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 		EnvOverrides: map[string]string{
@@ -65,7 +65,7 @@ func main() {
 
 	time.Sleep(3 * time.Minute)
 
-	record, err := repo.FindByID(ctx, payload.CrateID)
+	record, err := repo.FindByID(ctx, payload.ServerID)
 	if err != nil {
 		log.Fatalf("failed to find server record: %v", err)
 	}

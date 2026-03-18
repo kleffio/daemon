@@ -19,11 +19,11 @@ func TestDeleteWorkerHandleSuccess(t *testing.T) {
 	worker := workers.NewDeleteWorker(runtime, repo, logger)
 
 	payload := payloads.ServerOperationPayload{
-		OwnerID: "owner-1",
-		CrateID: "test-crate",
+		OwnerID:  "owner-1",
+		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerDelete, "test-crate", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerDelete, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -40,11 +40,11 @@ func TestDeleteWorkerHandleRuntimeFailure(t *testing.T) {
 	worker := workers.NewDeleteWorker(runtime, repo, logger)
 
 	payload := payloads.ServerOperationPayload{
-		OwnerID: "owner-1",
-		CrateID: "test-crate",
+		OwnerID:  "owner-1",
+		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerDelete, "test-crate", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerDelete, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")

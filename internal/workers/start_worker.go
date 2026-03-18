@@ -34,18 +34,18 @@ func (w *StartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Starting server", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Starting server", ports.LogKeyServerID, payload.ServerID)
 
-	crate, err := w.runtime.Start(ctx, payload)
+	server, err := w.runtime.Start(ctx, payload)
 	if err != nil {
 		log.Error("Failed to start server", err)
 		return fmt.Errorf("start failed: %w", err)
 	}
 
-	if err := w.repository.UpdateStatus(ctx, payload.CrateID, crate.State); err != nil {
-		log.Warn("Failed to update server status after start", "crate_id", payload.CrateID)
+	if err := w.repository.UpdateStatus(ctx, payload.ServerID, server.State); err != nil {
+		log.Warn("Failed to update server status after start", "server_id", payload.ServerID)
 	}
 
-	log.Info("Server started successfully", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Server started successfully", ports.LogKeyServerID, payload.ServerID)
 	return nil
 }

@@ -15,12 +15,12 @@ import (
 
 func TestStartWorkerHandleSuccess(t *testing.T) {
 	runtime := &mockRuntime{
-		returnCrate: &ports.RunningCrate{
-			Labels: labels.CrateLabels{
-				CrateID: "test-crate",
-				NodeID:  "test-node",
+		returnServer: &ports.RunningServer{
+			Labels: labels.ServerLabels{
+				ServerID: "test-server",
+				NodeID:   "test-node",
 			},
-			RuntimeRef: "test-crate",
+			RuntimeRef: "test-server",
 			State:      "Ready",
 		},
 	}
@@ -31,7 +31,7 @@ func TestStartWorkerHandleSuccess(t *testing.T) {
 
 	payload := payloads.ServerOperationPayload{
 		OwnerID:     "owner-1",
-		CrateID:     "test-crate",
+		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 		EnvOverrides: map[string]string{
@@ -40,7 +40,7 @@ func TestStartWorkerHandleSuccess(t *testing.T) {
 		},
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerStart, "test-crate", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -62,12 +62,12 @@ func TestStartWorkerHandleRuntimeFailure(t *testing.T) {
 
 	payload := payloads.ServerOperationPayload{
 		OwnerID:     "owner-1",
-		CrateID:     "test-crate",
+		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerStart, "test-crate", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")
