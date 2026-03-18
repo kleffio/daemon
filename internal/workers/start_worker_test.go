@@ -1,0 +1,75 @@
+package workers_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/kleffio/gameserver-daemon/internal/adapters/out/observability/logging"
+	"github.com/kleffio/gameserver-daemon/internal/application/ports"
+	"github.com/kleffio/gameserver-daemon/internal/workers"
+	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/gameserver-daemon/pkg/labels"
+)
+
+func TestStartWorkerHandleSuccess(t *testing.T) {
+	runtime := &mockRuntime{
+		returnCrate: &ports.RunningCrate{
+			Labels: labels.CrateLabels{
+				CrateID: "test-crate",
+				NodeID:  "test-node",
+			},
+			RuntimeRef: "test-crate",
+			State:      "Ready",
+		},
+	}
+	repo := &mockRepository{}
+	logger := logging.NewNoopLogger()
+
+	worker := workers.NewStartWorker(runtime, repo, logger)
+
+	payload := payloads.ServerOperationPayload{
+		OwnerID:     "owner-1",
+		CrateID:     "test-crate",
+		BlueprintID: "blueprint-1",
+		Image:       "itzg/minecraft-server:latest",
+		EnvOverrides: map[string]string{
+			"TYPE":    "PAPER",
+			"VERSION": "1.21.4",
+		},
+	}
+
+	job, _ := jobs.New(jobs.JobTypeServerStart, "test-crate", payload, 3)
+
+	if err := worker.Handle(context.Background(), job); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if !runtime.startCalled {
+		t.Error("expected runtime.Start to be called")
+	}
+}
+
+func TestStartWorkerHandleRuntimeFailure(t *testing.T) {
+	runtime := &mockRuntime{
+		returnErr: fmt.Errorf("agones unavailable"),
+	}
+	repo := &mockRepository{}
+	logger := logging.NewNoopLogger()
+
+	worker := workers.NewStartWorker(runtime, repo, logger)
+
+	payload := payloads.ServerOperationPayload{
+		OwnerID:     "owner-1",
+		CrateID:     "test-crate",
+		BlueprintID: "blueprint-1",
+		Image:       "itzg/minecraft-server:latest",
+	}
+
+	job, _ := jobs.New(jobs.JobTypeServerStart, "test-crate", payload, 3)
+
+	if err := worker.Handle(context.Background(), job); err == nil {
+		t.Error("expected error when runtime fails")
+	}
+}
