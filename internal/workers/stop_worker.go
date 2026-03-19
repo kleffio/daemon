@@ -34,17 +34,17 @@ func (w *StopWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Stopping server", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Stopping server", ports.LogKeyServerID, payload.ServerID)
 
-	if err := w.runtime.Stop(ctx, payload.CrateID); err != nil {
+	if err := w.runtime.Stop(ctx, payload.ServerID); err != nil {
 		log.Error("Failed to stop server", err)
 		return fmt.Errorf("stop failed: %w", err)
 	}
 
-	if err := w.repository.UpdateStatus(ctx, payload.CrateID, "stopped"); err != nil {
-		log.Warn("Failed to update server status after stop", "crate_id", payload.CrateID)
+	if err := w.repository.UpdateStatus(ctx, payload.ServerID, "stopped"); err != nil {
+		log.Warn("Failed to update server status after stop", "server_id", payload.ServerID)
 	}
 
-	log.Info("Server stopped successfully", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Server stopped successfully", ports.LogKeyServerID, payload.ServerID)
 	return nil
 }

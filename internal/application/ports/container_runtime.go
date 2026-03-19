@@ -7,8 +7,8 @@ import (
 	"github.com/kleffio/gameserver-daemon/pkg/labels"
 )
 
-type RunningCrate struct {
-	Labels     labels.CrateLabels
+type RunningServer struct {
+	Labels     labels.ServerLabels
 	RuntimeRef string
 	State      string
 }
@@ -22,10 +22,10 @@ type RawStats struct {
 }
 
 type ContainerRuntime interface {
-	Start(ctx context.Context, payload payloads.ServerOperationPayload) (*RunningCrate, error)
-	Stop(ctx context.Context, crateID string) error
-	Delete(ctx context.Context, crateID string) error
-	GetByID(ctx context.Context, crateID string) (*RunningCrate, error)
-	Reconcile(ctx context.Context, nodeID string) ([]*RunningCrate, error)
-	Stats(ctx context.Context, crateID string) (*RawStats, error)
+	Start(ctx context.Context, payload payloads.ServerOperationPayload) (*RunningServer, error)
+	Stop(ctx context.Context, serverID string) error
+	Delete(ctx context.Context, serverID string) error
+	GetByID(ctx context.Context, serverID string) (*RunningServer, error)
+	Reconcile(ctx context.Context, nodeID string) ([]*RunningServer, error)
+	Stats(ctx context.Context, serverID string) (*RawStats, error)
 }

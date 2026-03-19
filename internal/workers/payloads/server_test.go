@@ -10,7 +10,7 @@ import (
 func TestServerOperationPayload_JSON(t *testing.T) {
 	payload := payloads.ServerOperationPayload{
 		OwnerID:       "user-123",
-		CrateID:       "crate-456",
+		ServerID:      "server-456",
 		BlueprintID:   "blue-789",
 		Image:         "itzg/minecraft-server:latest",
 		MemoryBytes:   1024 * 1024 * 1024,

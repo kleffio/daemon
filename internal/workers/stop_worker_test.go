@@ -19,8 +19,8 @@ func TestStopWorkerHandleSuccess(t *testing.T) {
 	worker := workers.NewStopWorker(runtime, repo, logger)
 
 	payload := payloads.ServerOperationPayload{
-		OwnerID: "owner-1",
-		CrateID: "test-crate",
+		OwnerID:  "owner-1",
+		ServerID: "test-crate",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerStop, "test-crate", payload, 3)
@@ -40,8 +40,8 @@ func TestStopWorkerHandleRuntimeFailure(t *testing.T) {
 	worker := workers.NewStopWorker(runtime, repo, logger)
 
 	payload := payloads.ServerOperationPayload{
-		OwnerID: "owner-1",
-		CrateID: "test-crate",
+		OwnerID:  "owner-1",
+		ServerID: "test-crate",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerStop, "test-crate", payload, 3)
