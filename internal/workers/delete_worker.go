@@ -34,17 +34,17 @@ func (w *DeleteWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Deleting server", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Deleting server", ports.LogKeyServerID, payload.ServerID)
 
-	if err := w.runtime.Delete(ctx, payload.CrateID); err != nil {
+	if err := w.runtime.Delete(ctx, payload.ServerID); err != nil {
 		log.Error("Failed to delete server", err)
 		return fmt.Errorf("delete failed: %w", err)
 	}
 
-	if err := w.repository.UpdateStatus(ctx, payload.CrateID, "deleted"); err != nil {
-		log.Warn("Failed to update server status after delete", "crate_id", payload.CrateID)
+	if err := w.repository.UpdateStatus(ctx, payload.ServerID, "deleted"); err != nil {
+		log.Warn("Failed to update server status after delete", "server_id", payload.ServerID)
 	}
 
-	log.Info("Server deleted successfully", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Server deleted successfully", ports.LogKeyServerID, payload.ServerID)
 	return nil
 }

@@ -34,21 +34,21 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Provisioning server", ports.LogKeyServerID, payload.CrateID)
+	log.Info("Provisioning server", ports.LogKeyServerID, payload.ServerID)
 
-	crate, err := w.runtime.Start(ctx, payload)
+	server, err := w.runtime.Start(ctx, payload)
 	if err != nil {
 		log.Error("Failed to provision server", err)
 		return fmt.Errorf("provision failed: %w", err)
 	}
 
 	record := &ports.ServerRecord{
-		ID:         payload.CrateID,
-		Name:       payload.CrateID,
-		Status:     crate.State,
-		NodeID:     crate.Labels.NodeID,
+		ID:         payload.ServerID,
+		Name:       payload.ServerID,
+		Status:     server.State,
+		NodeID:     server.Labels.NodeID,
 		Runtime:    "agones",
-		RuntimeRef: crate.RuntimeRef,
+		RuntimeRef: server.RuntimeRef,
 	}
 
 	if err := w.repository.Save(ctx, record); err != nil {

@@ -6,7 +6,7 @@ package payloads
 type ServerOperationPayload struct {
 	// Identity / Tenancy
 	OwnerID     string `json:"owner_id"`
-	CrateID     string `json:"crate_id"`
+	ServerID    string `json:"server_id"`
 	BlueprintID string `json:"blueprint_id"`
 
 	// Blueprint details required for provision/start
