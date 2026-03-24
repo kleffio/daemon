@@ -13,7 +13,7 @@ import (
 	"github.com/kleffio/gameserver-daemon/pkg/labels"
 )
 
-func TestStartWorkerHandleSuccess(t *testing.T) {
+func TestRestartWorkerHandleSuccess(t *testing.T) {
 	runtime := &mockRuntime{
 		returnServer: &ports.RunningServer{
 			Labels: labels.ServerLabels{
@@ -27,20 +27,14 @@ func TestStartWorkerHandleSuccess(t *testing.T) {
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewStartWorker(runtime, repo, logger)
+	worker := workers.NewRestartWorker(runtime, repo, logger)
 
 	payload := payloads.ServerOperationPayload{
-		OwnerID:     "owner-1",
-		ServerID:    "test-server",
-		BlueprintID: "blueprint-1",
-		Image:       "itzg/minecraft-server:latest",
-		EnvOverrides: map[string]string{
-			"TYPE":    "PAPER",
-			"VERSION": "1.21.4",
-		},
+		OwnerID:  "owner-1",
+		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -51,25 +45,44 @@ func TestStartWorkerHandleSuccess(t *testing.T) {
 	}
 }
 
-func TestStartWorkerHandleRuntimeFailure(t *testing.T) {
+func TestRestartWorkerStopFailure(t *testing.T) {
+	runtime := &mockRuntime{
+		stopErr: fmt.Errorf("agones unavailable"),
+	}
+	repo := &mockRepository{}
+	logger := logging.NewNoopLogger()
+
+	worker := workers.NewRestartWorker(runtime, repo, logger)
+
+	payload := payloads.ServerOperationPayload{
+		OwnerID:  "owner-1",
+		ServerID: "test-server",
+	}
+
+	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", payload, 3)
+
+	if err := worker.Handle(context.Background(), job); err == nil {
+		t.Error("expected error when stop fails")
+	}
+}
+
+func TestRestartWorkerStartFailure(t *testing.T) {
 	runtime := &mockRuntime{
 		returnErr: fmt.Errorf("agones unavailable"),
 	}
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewStartWorker(runtime, repo, logger)
+	worker := workers.NewRestartWorker(runtime, repo, logger)
 
 	payload := payloads.ServerOperationPayload{
-		OwnerID:     "owner-1",
-		ServerID:    "test-server",
-		BlueprintID: "blueprint-1",
-		Image:       "itzg/minecraft-server:latest",
+		OwnerID:  "owner-1",
+		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", payload, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
-		t.Error("expected error when runtime fails")
+		t.Error("expected error when start fails")
 	}
 }

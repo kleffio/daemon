@@ -20,7 +20,7 @@ import (
 )
 
 var minecraftServerGVR = schema.GroupVersionResource{
-	Group:    "kleff",
+	Group:    "kleff.io",
 	Version:  "v1alpha1",
 	Resource: "minecraftservers",
 }
