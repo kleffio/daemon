@@ -36,7 +36,7 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 
 	log.Info("Provisioning server", ports.LogKeyServerID, payload.ServerID)
 
-	server, err := w.runtime.Start(ctx, payload)
+	server, err := w.runtime.Provision(ctx, payload)
 	if err != nil {
 		log.Error("Failed to provision server", err)
 		return fmt.Errorf("provision failed: %w", err)
