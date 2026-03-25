@@ -34,6 +34,12 @@ type Config struct {
 	RedisURL      string       `mapstructure:"redis.url"`
 	RedisPassword string       `mapstructure:"redis.password"`
 	RedisTLS      bool         `mapstructure:"redis.tls"`
+
+	// Kubernetes runtime fields.
+	// KubeConfig is the path to a kubeconfig file. Leave empty to use in-cluster
+	// config, or set to an http(s) URL to connect directly to the API server.
+	KubeConfig  string `mapstructure:"kube.config"`
+	KubeNS      string `mapstructure:"kube.namespace"`
 }
 
 func (c *Config) Validate() error {
@@ -76,6 +82,8 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.url", "redis://localhost:6379/0")
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.tls", false)
+	v.SetDefault("kube.config", "")
+	v.SetDefault("kube.namespace", "default")
 
 	v.SetEnvPrefix("gsd")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -116,6 +124,8 @@ func Load() (*Config, error) {
 	config.RedisURL = v.GetString("redis.url")
 	config.RedisPassword = v.GetString("redis.password")
 	config.RedisTLS = v.GetBool("redis.tls")
+	config.KubeConfig = v.GetString("kube.config")
+	config.KubeNS = v.GetString("kube.namespace")
 
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)

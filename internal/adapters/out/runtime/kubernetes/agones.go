@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,12 +18,16 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var minecraftServerGVR = schema.GroupVersionResource{
+// gameServerClaimGVR is the kleff.io custom CRD for generic game server claims.
+// An operator watches this CRD and creates an agones.dev/v1 GameServer from it.
+var gameServerClaimGVR = schema.GroupVersionResource{
 	Group:    "kleff.io",
 	Version:  "v1alpha1",
-	Resource: "minecraftservers",
+	Resource: "gameservers",
 }
 
+// gameServerGVR is the Agones GameServer CRD that the operator creates.
+// The daemon polls this to wait for Ready state.
 var gameServerGVR = schema.GroupVersionResource{
 	Group:    "agones.dev",
 	Version:  "v1",
@@ -63,6 +66,9 @@ func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 	return &KubernetesRuntime{client: client, namespace: namespace, nodeID: nodeID}, nil
 }
 
+// Start creates a kleff.io/v1alpha1 GameServer claim. The cluster operator
+// watches this CRD and creates an Agones GameServer from it. No game-specific
+// logic lives here — image, env vars, and ports come directly from the payload.
 func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
 	serverLabels := labels.ServerLabels{
 		OwnerID:     payload.OwnerID,
@@ -77,39 +83,55 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 		labelInterface[k] = v
 	}
 
-	env := payload.EnvOverrides
-	maxPlayers, _ := strconv.ParseInt(env["MAX_PLAYERS"], 10, 64)
-	viewDistance, _ := strconv.ParseInt(env["VIEW_DISTANCE"], 10, 64)
-	onlineMode, _ := strconv.ParseBool(env["ONLINE_MODE"])
+	// Build env list from all overrides — no game-specific extraction.
+	var envList []interface{}
+	for name, value := range payload.EnvOverrides {
+		envList = append(envList, map[string]interface{}{
+			"name":  name,
+			"value": value,
+		})
+	}
 
-	spec := map[string]interface{}{
-		"serverName":   payload.ServerID,
-		"type":         env["TYPE"],
-		"version":      env["VERSION"],
-		"maxPlayers":   maxPlayers,
-		"difficulty":   env["DIFFICULTY"],
-		"gamemode":     env["MODE"],
-		"viewDistance": viewDistance,
-		"worldSeed":    env["LEVEL_SEED"],
-		"onlineMode":   onlineMode,
+	// Build port list from requirements. Default to 25565/TCP if none specified.
+	var portList []interface{}
+	for _, pr := range payload.PortRequirements {
+		portList = append(portList, map[string]interface{}{
+			"containerPort": int64(pr.TargetPort),
+			"protocol":      strings.ToUpper(pr.Protocol),
+		})
+	}
+	if len(portList) == 0 {
+		portList = []interface{}{
+			map[string]interface{}{
+				"containerPort": int64(25565),
+				"protocol":      "TCP",
+			},
+		}
 	}
 
 	claim := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "kleff.io/v1alpha1",
-			"kind":       "MinecraftServer",
+			"kind":       "GameServer",
 			"metadata": map[string]interface{}{
 				"name":      payload.ServerID,
 				"namespace": k.namespace,
 				"labels":    labelInterface,
 			},
-			"spec": spec,
+			"spec": map[string]interface{}{
+				"serverName":  payload.ServerID,
+				"image":       payload.Image,
+				"env":         envList,
+				"ports":       portList,
+				"memoryLimit": formatMemory(payload.MemoryBytes),
+				"cpuLimit":    formatCPU(payload.CPUMillicores),
+			},
 		},
 	}
 
-	_, err := k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Create(ctx, claim, metav1.CreateOptions{})
+	_, err := k.client.Resource(gameServerClaimGVR).Namespace(k.namespace).Create(ctx, claim, metav1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create MinecraftServer claim: %w", err)
+		return nil, fmt.Errorf("failed to create GameServer claim: %w", err)
 	}
 
 	server, err := k.waitForReady(ctx, payload.ServerID, serverLabels)
@@ -120,8 +142,10 @@ func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOp
 	return server, nil
 }
 
+// Stop deletes the kleff.io/v1alpha1 GameServer claim. The operator cleans up
+// the Agones GameServer as part of the CRD deletion.
 func (k *KubernetesRuntime) Stop(ctx context.Context, serverID string) error {
-	return k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Delete(ctx, serverID, metav1.DeleteOptions{})
+	return k.client.Resource(gameServerClaimGVR).Namespace(k.namespace).Delete(ctx, serverID, metav1.DeleteOptions{})
 }
 
 func (k *KubernetesRuntime) Delete(ctx context.Context, serverID string) error {
@@ -170,6 +194,27 @@ func (k *KubernetesRuntime) Stats(ctx context.Context, serverID string) (*ports.
 	return &ports.RawStats{}, nil
 }
 
+// formatMemory converts bytes to a Kubernetes memory string (e.g. 4294967296 → "4Gi").
+func formatMemory(bytes int64) string {
+	const Gi = int64(1 << 30)
+	const Mi = int64(1 << 20)
+	if bytes > 0 && bytes%Gi == 0 {
+		return fmt.Sprintf("%dGi", bytes/Gi)
+	}
+	if bytes > 0 && bytes%Mi == 0 {
+		return fmt.Sprintf("%dMi", bytes/Mi)
+	}
+	return fmt.Sprintf("%d", bytes)
+}
+
+// formatCPU converts millicores to a Kubernetes CPU string (e.g. 1000 → "1000m").
+func formatCPU(milliCores int64) string {
+	return fmt.Sprintf("%dm", milliCores)
+}
+
+// waitForReady polls the Agones GameServer (created by the operator) until it
+// reaches Ready state. The operator is responsible for creating the Agones
+// resource from the kleff.io GameServer claim.
 func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.ServerLabels) (*ports.RunningServer, error) {
 	var server *ports.RunningServer
 

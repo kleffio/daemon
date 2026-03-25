@@ -27,28 +27,38 @@ func main() {
 	}
 
 	repo := memory.NewServerRepository()
-	q := queue.NewMemoryQueue()
+
+	// Use Redis queue so this exercises the same path as the real daemon.
+	// Make sure Redis is running: docker run -p 6379:6379 redis
+	q, err := queue.NewRedisQueue("redis://localhost:6379/0", "", false)
+	if err != nil {
+		log.Fatalf("failed to connect to Redis: %v", err)
+	}
 
 	provisionWorker := workers.NewProvisionWorker(runtime, repo, logger)
 	dispatcher := workers.NewDispatcher(q, 1)
 	dispatcher.Register(jobs.JobTypeServerProvision, provisionWorker.Handle)
 
+	// Generic payload — no game-specific field extraction.
+	// All env vars pass through to the kleff.io/v1alpha1 GameServer spec as-is.
 	payload := payloads.ServerOperationPayload{
 		OwnerID:     "owner-1",
 		ServerID:    "test-provision-2",
-		BlueprintID: "blueprint-1",
+		BlueprintID: "minecraft-java-paper",
 		Image:       "itzg/minecraft-server:latest",
 		EnvOverrides: map[string]string{
-			"TYPE":          "PAPER",
-			"VERSION":       "1.21.4",
-			"MAX_PLAYERS":   "20",
-			"DIFFICULTY":    "normal",
-			"MODE":          "survival",
-			"VIEW_DISTANCE": "10",
-			"LEVEL_SEED":    "",
-			"ONLINE_MODE":   "true",
+			"TYPE":        "PAPER",
+			"VERSION":     "1.21.4",
+			"MAX_PLAYERS": "20",
+			"DIFFICULTY":  "normal",
+			"MODE":        "survival",
+			"EULA":        "TRUE",
 		},
-		MemoryBytes: 4294967296,
+		MemoryBytes:   4294967296,
+		CPUMillicores: 1000,
+		PortRequirements: []payloads.PortRequirement{
+			{TargetPort: 25565, Protocol: "TCP"},
+		},
 	}
 
 	job, err := jobs.New(jobs.JobTypeServerProvision, "test-provision-2", payload, 3)
@@ -60,7 +70,7 @@ func main() {
 		log.Fatalf("failed to enqueue job: %v", err)
 	}
 
-	fmt.Println("Job enqueued, waiting for server to reach Ready state...")
+	fmt.Println("Job pushed to Redis repo:queue:pending — dispatcher picking it up...")
 	go dispatcher.Run(ctx)
 
 	time.Sleep(3 * time.Minute)
@@ -72,8 +82,6 @@ func main() {
 
 	fmt.Printf("\nServer provisioned!\n")
 	fmt.Printf("  ID:          %s\n", record.ID)
-	fmt.Printf("  Name:        %s\n", record.Name)
 	fmt.Printf("  Status:      %s\n", record.Status)
-	fmt.Printf("  Node:        %s\n", record.NodeID)
 	fmt.Printf("  RuntimeRef:  %s\n", record.RuntimeRef)
 }
