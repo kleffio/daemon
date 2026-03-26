@@ -3,11 +3,11 @@ package ports
 import (
 	"context"
 
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
 type RunningServer struct {
-	Labels     labels.ServerLabels
+	Labels     labels.WorkloadLabels
 	RuntimeRef string
 	State      string
 }

@@ -1,4 +1,4 @@
-module github.com/kleffio/gameserver-daemon
+module github.com/kleffio/kleff-daemon
 
 go 1.25.5
 

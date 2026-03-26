@@ -3,8 +3,8 @@ package workers_test
 import (
 	"context"
 
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 type mockRuntime struct {

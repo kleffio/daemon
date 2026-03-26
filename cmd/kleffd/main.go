@@ -4,10 +4,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/kleffio/gameserver-daemon/internal/adapters/out/db"
-	"github.com/kleffio/gameserver-daemon/internal/adapters/out/observability/logging"
-	"github.com/kleffio/gameserver-daemon/internal/app/config"
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/adapters/out/db"
+	"github.com/kleffio/kleff-daemon/internal/adapters/out/observability/logging"
+	"github.com/kleffio/kleff-daemon/internal/app/config"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
 )
 
 func main() {

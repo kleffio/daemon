@@ -1,6 +1,6 @@
 package ports
 
-import "github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+import "github.com/kleffio/kleff-daemon/internal/workers/jobs"
 
 type Queue interface {
 	Enqueue(job *jobs.Job) error
