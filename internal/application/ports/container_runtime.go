@@ -8,7 +8,7 @@ import (
 )
 
 type RunningServer struct {
-	Labels     labels.ServerLabels
+	Labels     labels.WorkloadLabels
 	RuntimeRef string
 	State      string
 }

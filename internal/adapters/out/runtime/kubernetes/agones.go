@@ -64,7 +64,7 @@ func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 }
 
 func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
-	serverLabels := labels.ServerLabels{
+	serverLabels := labels.WorkloadLabels{
 		OwnerID:     payload.OwnerID,
 		ServerID:    payload.ServerID,
 		BlueprintID: payload.BlueprintID,
@@ -170,7 +170,7 @@ func (k *KubernetesRuntime) Stats(ctx context.Context, serverID string) (*ports.
 	return &ports.RawStats{}, nil
 }
 
-func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.ServerLabels) (*ports.RunningServer, error) {
+func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.WorkloadLabels) (*ports.RunningServer, error) {
 	var server *ports.RunningServer
 
 	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {

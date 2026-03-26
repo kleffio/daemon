@@ -6,7 +6,7 @@ import (
 )
 
 func TestServerLabels_ToMap(t *testing.T) {
-	cl := labels.ServerLabels{
+	cl := labels.WorkloadLabels{
 		OwnerID:     "user-123",
 		ServerID:    "server-456",
 		BlueprintID: "blue-789",

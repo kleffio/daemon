@@ -16,7 +16,7 @@ import (
 func TestStartWorkerHandleSuccess(t *testing.T) {
 	runtime := &mockRuntime{
 		returnServer: &ports.RunningServer{
-			Labels: labels.ServerLabels{
+			Labels: labels.WorkloadLabels{
 				ServerID: "test-server",
 				NodeID:   "test-node",
 			},
