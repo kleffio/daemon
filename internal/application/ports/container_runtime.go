@@ -3,8 +3,8 @@ package ports
 import (
 	"context"
 
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
 type RunningServer struct {

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"

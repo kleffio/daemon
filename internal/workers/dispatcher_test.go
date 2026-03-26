@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kleffio/gameserver-daemon/internal/adapters/out/queue"
-	"github.com/kleffio/gameserver-daemon/internal/workers"
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/adapters/out/queue"
+	"github.com/kleffio/kleff-daemon/internal/workers"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 func TestDispatcherRegistersAndDispatchesJob(t *testing.T) {

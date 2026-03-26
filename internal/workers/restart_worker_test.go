@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kleffio/gameserver-daemon/internal/adapters/out/observability/logging"
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers"
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/internal/adapters/out/observability/logging"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/workers"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
 func TestRestartWorkerHandleSuccess(t *testing.T) {

@@ -2,7 +2,7 @@ package labels_test
 
 import (
 	"testing"
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
 func TestServerLabels_ToMap(t *testing.T) {

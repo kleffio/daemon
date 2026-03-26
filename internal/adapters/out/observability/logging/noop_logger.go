@@ -1,6 +1,6 @@
 package logging
 
-import "github.com/kleffio/gameserver-daemon/internal/application/ports"
+import "github.com/kleffio/kleff-daemon/internal/application/ports"
 
 type NoopLogger struct{}
 

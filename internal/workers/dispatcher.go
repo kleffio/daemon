@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type HandlerFunc func(ctx context.Context, job *jobs.Job) error

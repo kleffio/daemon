@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kleffio/gameserver-daemon/internal/adapters/out/observability/logging"
-	"github.com/kleffio/gameserver-daemon/internal/workers"
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/internal/adapters/out/observability/logging"
+	"github.com/kleffio/kleff-daemon/internal/workers"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 func TestDeleteWorkerHandleSuccess(t *testing.T) {
