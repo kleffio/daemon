@@ -3,7 +3,6 @@ package ports
 import (
 	"context"
 
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
@@ -22,7 +21,7 @@ type RawStats struct {
 }
 
 type ContainerRuntime interface {
-	Start(ctx context.Context, payload payloads.ServerOperationPayload) (*RunningServer, error)
+	Start(ctx context.Context, payload WorkloadSpec) (*RunningServer, error)
 	Stop(ctx context.Context, serverID string) error
 	Delete(ctx context.Context, serverID string) error
 	GetByID(ctx context.Context, serverID string) (*RunningServer, error)
