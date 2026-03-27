@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type testPayload struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 func setupRedis(t *testing.T) (*miniredis.Miniredis, *RedisQueue) {

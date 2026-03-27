@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
 )
 
 type ServerRepository struct {

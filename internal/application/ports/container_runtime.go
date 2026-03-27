@@ -3,12 +3,11 @@ package ports
 import (
 	"context"
 
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
 type RunningServer struct {
-	Labels     labels.ServerLabels
+	Labels     labels.WorkloadLabels
 	RuntimeRef string
 	State      string
 }
@@ -22,7 +21,7 @@ type RawStats struct {
 }
 
 type ContainerRuntime interface {
-	Start(ctx context.Context, payload payloads.ServerOperationPayload) (*RunningServer, error)
+	Start(ctx context.Context, payload WorkloadSpec) (*RunningServer, error)
 	Stop(ctx context.Context, serverID string) error
 	Delete(ctx context.Context, serverID string) error
 	GetByID(ctx context.Context, serverID string) (*RunningServer, error)
