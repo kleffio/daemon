@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -68,7 +69,48 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// gsdEnvMappings lists every known GSD_* variable and its KLEFF_* replacement.
+// The shim copies GSD_* values to KLEFF_* at startup when KLEFF_* is not already set.
+var gsdEnvMappings = []struct {
+	gsd   string
+	kleff string
+}{
+	{"GSD_RUNTIME_MODE", "KLEFF_RUNTIME_MODE"},
+	{"GSD_CLUSTER_REGION", "KLEFF_CLUSTER_REGION"},
+	{"GSD_NODE_ID", "KLEFF_NODE_ID"},
+	{"GSD_GRPC_PORT", "KLEFF_GRPC_PORT"},
+	{"GSD_METRICS_PORT", "KLEFF_METRICS_PORT"},
+	{"GSD_QUEUE_BACKEND", "KLEFF_QUEUE_BACKEND"},
+	{"GSD_DATABASE_PATH", "KLEFF_DATABASE_PATH"},
+	{"GSD_REDIS_URL", "KLEFF_REDIS_URL"},
+	{"GSD_REDIS_PASSWORD", "KLEFF_REDIS_PASSWORD"},
+	{"GSD_REDIS_TLS", "KLEFF_REDIS_TLS"},
+	{"GSD_PLATFORM_URL", "KLEFF_PLATFORM_URL"},
+	{"GSD_SHARED_SECRET", "KLEFF_SHARED_SECRET"},
+}
+
+// applyDeprecationShim copies any set GSD_* env vars to their KLEFF_* equivalents
+// (unless KLEFF_* is already set) and logs a structured warning for each one found.
+func applyDeprecationShim() {
+	for _, m := range gsdEnvMappings {
+		val := os.Getenv(m.gsd)
+		if val == "" {
+			continue
+		}
+		if os.Getenv(m.kleff) != "" {
+			continue
+		}
+		os.Setenv(m.kleff, val)
+		slog.Warn("deprecated env var in use; rename to KLEFF_* equivalent",
+			"deprecated", m.gsd,
+			"replacement", m.kleff,
+		)
+	}
+}
+
 func Load() (*Config, error) {
+	applyDeprecationShim()
+
 	v := viper.New()
 
 	hostname, err := os.Hostname()
