@@ -34,6 +34,8 @@ type Config struct {
 	RedisURL      string       `mapstructure:"redis.url"`
 	RedisPassword string       `mapstructure:"redis.password"`
 	RedisTLS      bool         `mapstructure:"redis.tls"`
+	PlatformURL   string       `mapstructure:"platform.url"`
+	SharedSecret  string       `mapstructure:"shared_secret"`
 }
 
 func (c *Config) Validate() error {
@@ -55,10 +57,19 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("node.id is required and cannot be empty")
 	}
 
+	if strings.TrimSpace(c.PlatformURL) == "" {
+		return fmt.Errorf("KLEFF_PLATFORM_URL is required and cannot be empty")
+	}
+
+	if strings.TrimSpace(c.SharedSecret) == "" {
+		return fmt.Errorf("KLEFF_SHARED_SECRET is required and cannot be empty")
+	}
+
 	return nil
 }
 
 func Load() (*Config, error) {
+
 	v := viper.New()
 
 	hostname, err := os.Hostname()
@@ -76,12 +87,14 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.url", "redis://localhost:6379/0")
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.tls", false)
+	v.SetDefault("platform.url", "")
+	v.SetDefault("shared_secret", "")
 
-	v.SetEnvPrefix("gsd")
+	v.SetEnvPrefix("kleff")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	v.SetConfigName("config") 
+	v.SetConfigName("config")
 	v.SetConfigType("yaml")
 	v.AddConfigPath("/etc/gameserver-daemon/")
 	v.AddConfigPath(".")
@@ -92,7 +105,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	fs := pflag.NewFlagSet("gsd", pflag.ContinueOnError)
+	fs := pflag.NewFlagSet("kleff", pflag.ContinueOnError)
 	fs.ParseErrorsWhitelist.UnknownFlags = true
 
 	fs.String("runtime.mode", v.GetString("runtime.mode"), "Runtime mode for the daemon (e.g. docker, kubernetes)")
@@ -116,6 +129,8 @@ func Load() (*Config, error) {
 	config.RedisURL = v.GetString("redis.url")
 	config.RedisPassword = v.GetString("redis.password")
 	config.RedisTLS = v.GetBool("redis.tls")
+	config.PlatformURL = v.GetString("platform.url")
+	config.SharedSecret = v.GetString("shared_secret")
 
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
