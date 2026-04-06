@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 	"github.com/redis/go-redis/v9"
 )
 

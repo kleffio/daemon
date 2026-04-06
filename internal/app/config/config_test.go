@@ -13,14 +13,27 @@ func resetViperAndFlags() {
 	pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
 }
 
+// setRequiredKleffVars sets the two new required KLEFF_* vars that every
+// test must supply unless it is specifically testing their absence.
+func setRequiredKleffVars(t *testing.T) {
+	t.Helper()
+	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
+	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
+	t.Cleanup(func() {
+		os.Unsetenv("KLEFF_PLATFORM_URL")
+		os.Unsetenv("KLEFF_SHARED_SECRET")
+	})
+}
+
 func TestConfigLoadsCorrectlyDefaults(t *testing.T) {
 	resetViperAndFlags()
 
-	os.Unsetenv("GSD_RUNTIME_MODE")
-	os.Unsetenv("GSD_CLUSTER_REGION")
-	
-	os.Setenv("GSD_NODE_ID", "default-node")
-	defer os.Unsetenv("GSD_NODE_ID")
+	os.Unsetenv("KLEFF_RUNTIME_MODE")
+	os.Unsetenv("KLEFF_CLUSTER_REGION")
+
+	os.Setenv("KLEFF_NODE_ID", "default-node")
+	defer os.Unsetenv("KLEFF_NODE_ID")
+	setRequiredKleffVars(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -41,14 +54,15 @@ func TestConfigLoadsCorrectlyDefaults(t *testing.T) {
 func TestConfigRuntimeModeConfigurableViaEnv(t *testing.T) {
 	resetViperAndFlags()
 
-	os.Setenv("GSD_NODE_ID", "env-node")
-	os.Setenv("GSD_RUNTIME_MODE", "kubernetes")
-	os.Setenv("GSD_QUEUE_BACKEND", "redis")
+	os.Setenv("KLEFF_NODE_ID", "env-node")
+	os.Setenv("KLEFF_RUNTIME_MODE", "kubernetes")
+	os.Setenv("KLEFF_QUEUE_BACKEND", "redis")
 	defer func() {
-		os.Unsetenv("GSD_NODE_ID")
-		os.Unsetenv("GSD_RUNTIME_MODE")
-		os.Unsetenv("GSD_QUEUE_BACKEND")
+		os.Unsetenv("KLEFF_NODE_ID")
+		os.Unsetenv("KLEFF_RUNTIME_MODE")
+		os.Unsetenv("KLEFF_QUEUE_BACKEND")
 	}()
+	setRequiredKleffVars(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -66,14 +80,15 @@ func TestConfigRuntimeModeConfigurableViaEnv(t *testing.T) {
 func TestConfigNodesAndPortsViaEnv(t *testing.T) {
 	resetViperAndFlags()
 
-	os.Setenv("GSD_NODE_ID", "test-node")
-	os.Setenv("GSD_GRPC_PORT", "9090")
-	os.Setenv("GSD_METRICS_PORT", "8080")
+	os.Setenv("KLEFF_NODE_ID", "test-node")
+	os.Setenv("KLEFF_GRPC_PORT", "9090")
+	os.Setenv("KLEFF_METRICS_PORT", "8080")
 	defer func() {
-		os.Unsetenv("GSD_NODE_ID")
-		os.Unsetenv("GSD_GRPC_PORT")
-		os.Unsetenv("GSD_METRICS_PORT")
+		os.Unsetenv("KLEFF_NODE_ID")
+		os.Unsetenv("KLEFF_GRPC_PORT")
+		os.Unsetenv("KLEFF_METRICS_PORT")
 	}()
+	setRequiredKleffVars(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -94,30 +109,38 @@ func TestConfigNodesAndPortsViaEnv(t *testing.T) {
 func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 	resetViperAndFlags()
 
-	os.Setenv("GSD_RUNTIME_MODE", "docker")
-	os.Setenv("GSD_QUEUE_BACKEND", "memory")
-	os.Args = []string{"cmd", "--node.id="} 
+	os.Setenv("KLEFF_RUNTIME_MODE", "docker")
+	os.Setenv("KLEFF_QUEUE_BACKEND", "memory")
+	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
+	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
+	os.Args = []string{"cmd", "--node.id="}
 	_, err := Load()
 	if err == nil {
 		t.Errorf("Expected validation to fail when node.id is missing")
 	}
 
 	resetViperAndFlags()
-	os.Setenv("GSD_NODE_ID", "valid-node")
-	os.Setenv("GSD_RUNTIME_MODE", "invalid-runtime")
+	os.Setenv("KLEFF_NODE_ID", "valid-node")
+	os.Setenv("KLEFF_RUNTIME_MODE", "invalid-runtime")
+	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
+	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
 	_, err = Load()
 	if err == nil {
 		t.Errorf("Expected validation to fail for invalid runtime.mode")
 	}
 
 	resetViperAndFlags()
-	os.Setenv("GSD_NODE_ID", "valid-node")
-	os.Setenv("GSD_RUNTIME_MODE", "docker")
-	os.Setenv("GSD_QUEUE_BACKEND", "invalid-queue")
+	os.Setenv("KLEFF_NODE_ID", "valid-node")
+	os.Setenv("KLEFF_RUNTIME_MODE", "docker")
+	os.Setenv("KLEFF_QUEUE_BACKEND", "invalid-queue")
+	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
+	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
 	defer func() {
-		os.Unsetenv("GSD_NODE_ID")
-		os.Unsetenv("GSD_RUNTIME_MODE")
-		os.Unsetenv("GSD_QUEUE_BACKEND")
+		os.Unsetenv("KLEFF_NODE_ID")
+		os.Unsetenv("KLEFF_RUNTIME_MODE")
+		os.Unsetenv("KLEFF_QUEUE_BACKEND")
+		os.Unsetenv("KLEFF_PLATFORM_URL")
+		os.Unsetenv("KLEFF_SHARED_SECRET")
 	}()
 	_, err = Load()
 	if err == nil {
@@ -142,12 +165,13 @@ grpc:
 	}
 	defer os.Remove("config.yaml")
 
-	os.Setenv("GSD_RUNTIME_MODE", "kubernetes")
-	os.Setenv("GSD_NODE_ID", "env-node")
+	os.Setenv("KLEFF_RUNTIME_MODE", "kubernetes")
+	os.Setenv("KLEFF_NODE_ID", "env-node")
 	defer func() {
-		os.Unsetenv("GSD_RUNTIME_MODE")
-		os.Unsetenv("GSD_NODE_ID")
+		os.Unsetenv("KLEFF_RUNTIME_MODE")
+		os.Unsetenv("KLEFF_NODE_ID")
 	}()
+	setRequiredKleffVars(t)
 
 	os.Args = []string{"cmd", "--node.id=flag-node"}
 

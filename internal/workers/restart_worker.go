@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers/jobs"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 type RestartWorker struct {

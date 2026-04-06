@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 func TestServerOperationPayload_JSON(t *testing.T) {

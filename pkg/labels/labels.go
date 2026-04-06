@@ -2,7 +2,8 @@ package labels
 
 const (
 	OwnerID     = "kleff.io/owner_id"
-	ServerID    = "kleff.io/server_id"
+	WorkloadID  = "kleff.io/workload_id"
+	ServerID    = "kleff.io/server_id" // Deprecated: use WorkloadID; kept for reconcile during rollout
 	BlueprintID = "kleff.io/blueprint_id"
 	NodeID      = "kleff.io/node_id"
 	ManagedBy   = "kleff.io/managed_by"
@@ -10,30 +11,37 @@ const (
 	ManagedByValue = "kleff-daemon"
 )
 
-type ServerLabels struct {
+type WorkloadLabels struct {
 	OwnerID     string
 	ServerID    string
 	BlueprintID string
 	NodeID      string
+	ProjectID   string
 }
 
-func (l *ServerLabels) ToMap() map[string]string {
+func (l *WorkloadLabels) ToMap() map[string]string {
 	return map[string]string{
 		OwnerID:     l.OwnerID,
-		ServerID:    l.ServerID,
+		WorkloadID:  l.ServerID, // new key
+		ServerID:    l.ServerID, // deprecated alias — kept during transition
 		BlueprintID: l.BlueprintID,
 		NodeID:      l.NodeID,
 		ManagedBy:   ManagedByValue,
 	}
 }
 
-func FromMap(m map[string]string) ServerLabels {
+func FromMap(m map[string]string) WorkloadLabels {
 	if m[ManagedBy] != ManagedByValue {
-		return ServerLabels{}
+		return WorkloadLabels{}
 	}
-	return ServerLabels{
+	// Accept containers labeled with either the new workload_id key or the old server_id key.
+	workloadID := m[WorkloadID]
+	if workloadID == "" {
+		workloadID = m[ServerID]
+	}
+	return WorkloadLabels{
 		OwnerID:     m[OwnerID],
-		ServerID:    m[ServerID],
+		ServerID:    workloadID,
 		BlueprintID: m[BlueprintID],
 		NodeID:      m[NodeID],
 	}

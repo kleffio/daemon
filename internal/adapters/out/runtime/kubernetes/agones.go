@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kleffio/gameserver-daemon/internal/application/ports"
-	"github.com/kleffio/gameserver-daemon/internal/workers/payloads"
-	"github.com/kleffio/gameserver-daemon/pkg/labels"
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
+	"github.com/kleffio/kleff-daemon/pkg/labels"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -73,7 +73,7 @@ func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 }
 
 func (k *KubernetesRuntime) Provision(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
-	serverLabels := labels.ServerLabels{
+	serverLabels := labels.WorkloadLabels{
 		OwnerID:     payload.OwnerID,
 		ServerID:    payload.ServerID,
 		BlueprintID: payload.BlueprintID,
@@ -130,7 +130,7 @@ func (k *KubernetesRuntime) Provision(ctx context.Context, payload payloads.Serv
 }
 
 func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
-	serverLabels := labels.ServerLabels{
+	serverLabels := labels.WorkloadLabels{
 		OwnerID:     payload.OwnerID,
 		ServerID:    payload.ServerID,
 		BlueprintID: payload.BlueprintID,
@@ -318,7 +318,7 @@ func (k *KubernetesRuntime) getCompositeName(ctx context.Context, serverID strin
 	return compositeName, nil
 }
 
-func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.ServerLabels) (*ports.RunningServer, error) {
+func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.WorkloadLabels) (*ports.RunningServer, error) {
 	var server *ports.RunningServer
 
 	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
