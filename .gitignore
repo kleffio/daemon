@@ -2,8 +2,12 @@
 data/kleff.db
 *.db
 
-# Test binary
+# Test binaries
 /testprovision
+/teststart
+/teststop
+/testdelete
+/testrestart
 
 # Build output
 *.exe
