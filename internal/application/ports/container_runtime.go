@@ -21,7 +21,6 @@ type RawStats struct {
 }
 
 type ContainerRuntime interface {
-	Provision(ctx context.Context, payload WorkloadSpec) (*RunningServer, error)
 	Start(ctx context.Context, payload WorkloadSpec) (*RunningServer, error)
 	Stop(ctx context.Context, serverID string) error
 	Delete(ctx context.Context, serverID string) error

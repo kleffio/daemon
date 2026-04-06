@@ -2,7 +2,6 @@ package kubernetes
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,11 +10,9 @@ import (
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 	"github.com/kleffio/kleff-daemon/pkg/labels"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -26,12 +23,6 @@ var minecraftServerGVR = schema.GroupVersionResource{
 	Group:    "kleff.io",
 	Version:  "v1alpha1",
 	Resource: "minecraftservers",
-}
-
-var xMinecraftServerGVR = schema.GroupVersionResource{
-	Group:    "kleff.io",
-	Version:  "v1alpha1",
-	Resource: "xminecraftservers",
 }
 
 var gameServerGVR = schema.GroupVersionResource{
@@ -72,7 +63,7 @@ func New(kubeconfig, namespace, nodeID string) (*KubernetesRuntime, error) {
 	return &KubernetesRuntime{client: client, namespace: namespace, nodeID: nodeID}, nil
 }
 
-func (k *KubernetesRuntime) Provision(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
+func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
 	serverLabels := labels.WorkloadLabels{
 		OwnerID:     payload.OwnerID,
 		ServerID:    payload.ServerID,
@@ -129,137 +120,12 @@ func (k *KubernetesRuntime) Provision(ctx context.Context, payload payloads.Serv
 	return server, nil
 }
 
-func (k *KubernetesRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
-	serverLabels := labels.WorkloadLabels{
-		OwnerID:     payload.OwnerID,
-		ServerID:    payload.ServerID,
-		BlueprintID: payload.BlueprintID,
-		NodeID:      k.nodeID,
-	}
-
-	compositeName, err := k.getCompositeName(ctx, payload.ServerID)
-	if err != nil {
-		return nil, err
-	}
-
-	patch := []byte(`{"metadata":{"annotations":{"crossplane.io/paused":null}}}`)
-	_, err = k.client.Resource(xMinecraftServerGVR).Patch(ctx, compositeName, types.MergePatchType, patch, metav1.PatchOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to unpause composite: %w", err)
-	}
-
-	// Delete stale GameServer if it exists so Agones doesn't panic on stale state
-	_ = k.client.Resource(gameServerGVR).Namespace(k.namespace).Delete(ctx, payload.ServerID, metav1.DeleteOptions{})
-
-	env := payload.EnvOverrides
-	memoryQty := resource.NewQuantity(4*1024*1024*1024, resource.BinarySI)
-	if payload.MemoryBytes > 0 {
-		memoryQty = resource.NewQuantity(payload.MemoryBytes, resource.BinarySI)
-	}
-	memory := memoryQty.String()
-
-	gs := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "agones.dev/v1",
-			"kind":       "GameServer",
-			"metadata": map[string]interface{}{
-				"name":      payload.ServerID,
-				"namespace": k.namespace,
-			},
-			"spec": map[string]interface{}{
-				"container": "minecraft",
-				"health": map[string]interface{}{
-					"disabled": true,
-				},
-				"ports": []interface{}{
-					map[string]interface{}{
-						"name":          "minecraft",
-						"portPolicy":    "Dynamic",
-						"containerPort": int64(25565),
-						"protocol":      "TCP",
-					},
-				},
-				"template": map[string]interface{}{
-					"spec": map[string]interface{}{
-						"containers": []interface{}{
-							map[string]interface{}{
-								"name":  "minecraft",
-								"image": "itzg/minecraft-server:latest",
-								"env": []interface{}{
-									map[string]interface{}{"name": "EULA", "value": "TRUE"},
-									map[string]interface{}{"name": "TYPE", "value": env["TYPE"]},
-									map[string]interface{}{"name": "VERSION", "value": env["VERSION"]},
-									map[string]interface{}{"name": "MAX_PLAYERS", "value": env["MAX_PLAYERS"]},
-									map[string]interface{}{"name": "DIFFICULTY", "value": env["DIFFICULTY"]},
-									map[string]interface{}{"name": "MODE", "value": env["MODE"]},
-									map[string]interface{}{"name": "VIEW_DISTANCE", "value": env["VIEW_DISTANCE"]},
-									map[string]interface{}{"name": "LEVEL_SEED", "value": env["LEVEL_SEED"]},
-									map[string]interface{}{"name": "ONLINE_MODE", "value": env["ONLINE_MODE"]},
-								},
-								"resources": map[string]interface{}{
-									"requests": map[string]interface{}{"memory": memory},
-									"limits":   map[string]interface{}{"memory": memory},
-								},
-								"volumeMounts": []interface{}{
-									map[string]interface{}{
-										"name":      "world",
-										"mountPath": "/data",
-									},
-								},
-							},
-						},
-						"volumes": []interface{}{
-							map[string]interface{}{
-								"name": "world",
-								"persistentVolumeClaim": map[string]interface{}{
-									"claimName": payload.ServerID,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	if b, jerr := json.MarshalIndent(gs.Object, "", "  "); jerr == nil {
-		fmt.Printf("[DEBUG] GameServer spec being submitted:\n%s\n", string(b))
-	}
-
-	_, err = k.client.Resource(gameServerGVR).Namespace(k.namespace).Create(ctx, gs, metav1.CreateOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create game server: %w", err)
-	}
-
-	server, err := k.waitForReady(ctx, payload.ServerID, serverLabels)
-	if err != nil {
-		return nil, fmt.Errorf("server did not reach ready state: %w", err)
-	}
-
-	return server, nil
-}
-
 func (k *KubernetesRuntime) Stop(ctx context.Context, serverID string) error {
-	compositeName, err := k.getCompositeName(ctx, serverID)
-	if err != nil {
-		return err
-	}
-
-	patch := []byte(`{"metadata":{"annotations":{"crossplane.io/paused":"true"}}}`)
-	_, err = k.client.Resource(xMinecraftServerGVR).Patch(ctx, compositeName, types.MergePatchType, patch, metav1.PatchOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to pause composite: %w", err)
-	}
-
-	if err := k.client.Resource(gameServerGVR).Namespace(k.namespace).Delete(ctx, serverID, metav1.DeleteOptions{}); err != nil {
-		return fmt.Errorf("failed to delete game server: %w", err)
-	}
-
-	return nil
+	return k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Delete(ctx, serverID, metav1.DeleteOptions{})
 }
 
 func (k *KubernetesRuntime) Delete(ctx context.Context, serverID string) error {
-	return k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Delete(ctx, serverID, metav1.DeleteOptions{})
+	return k.Stop(ctx, serverID)
 }
 
 func (k *KubernetesRuntime) GetByID(ctx context.Context, serverID string) (*ports.RunningServer, error) {
@@ -302,20 +168,6 @@ func (k *KubernetesRuntime) Reconcile(ctx context.Context, nodeID string) ([]*po
 
 func (k *KubernetesRuntime) Stats(ctx context.Context, serverID string) (*ports.RawStats, error) {
 	return &ports.RawStats{}, nil
-}
-
-func (k *KubernetesRuntime) getCompositeName(ctx context.Context, serverID string) (string, error) {
-	claim, err := k.client.Resource(minecraftServerGVR).Namespace(k.namespace).Get(ctx, serverID, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("failed to get MinecraftServer claim: %w", err)
-	}
-
-	compositeName, _, err := unstructured.NestedString(claim.Object, "spec", "resourceRef", "name")
-	if err != nil || compositeName == "" {
-		return "", fmt.Errorf("composite name not found on claim %s", serverID)
-	}
-
-	return compositeName, nil
 }
 
 func (k *KubernetesRuntime) waitForReady(ctx context.Context, name string, serverLabels labels.WorkloadLabels) (*ports.RunningServer, error) {

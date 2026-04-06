@@ -1,6 +1,6 @@
 package payloads
 
-import "github.com/kleffio/kleff-daemon/internal/application/ports"
+import "github.com/kleffio/gameserver-daemon/internal/application/ports"
 
 // ServerOperationPayload is deprecated: use ports.WorkloadSpec directly.
 // Kept as a type alias so existing worker code compiles without changes during transition.
