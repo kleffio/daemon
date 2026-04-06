@@ -8,17 +8,11 @@ import (
 )
 
 type mockRuntime struct {
-	provisionCalled bool
-	startCalled     bool
-	returnServer    *ports.RunningServer
-	returnErr       error
-	deleteErr       error
-	stopErr         error
-}
-
-func (m *mockRuntime) Provision(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
-	m.provisionCalled = true
-	return m.returnServer, m.returnErr
+	startCalled  bool
+	returnServer *ports.RunningServer
+	returnErr    error
+	deleteErr    error
+	stopErr      error
 }
 
 func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
