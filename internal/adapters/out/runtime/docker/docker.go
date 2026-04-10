@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
@@ -36,9 +37,13 @@ func New(nodeID string) (*Adapter, error) {
 
 // Deploy pulls the image and starts a new container.
 func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
-	// Pull image.
+	// Pull image and wait for completion.
 	rc, err := a.client.ImagePull(ctx, spec.Image, image.PullOptions{})
 	if err != nil {
+		return nil, fmt.Errorf("failed to pull image %s: %w", spec.Image, err)
+	}
+	if _, err := io.Copy(io.Discard, rc); err != nil {
+		rc.Close()
 		return nil, fmt.Errorf("failed to pull image %s: %w", spec.Image, err)
 	}
 	rc.Close()
@@ -180,6 +185,25 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) 
 		labelPrefix + "node_id":      a.nodeID,
 	}
 
+	resources := container.Resources{}
+	if spec.MemoryBytes > 0 {
+		resources.Memory = spec.MemoryBytes
+	}
+	if spec.CPUMillicores > 0 {
+		// Docker uses CPU quota: 1 vCPU = 100000 quota per 100000 period
+		resources.CPUQuota = spec.CPUMillicores * 100
+		resources.CPUPeriod = 100000
+	}
+
+	var mounts []mount.Mount
+	if spec.RuntimeHints.PersistentStorage && spec.RuntimeHints.StoragePath != "" {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: fmt.Sprintf("kleff-%s-data", spec.ServerID),
+			Target: spec.RuntimeHints.StoragePath,
+		})
+	}
+
 	resp, err := a.client.ContainerCreate(ctx,
 		&container.Config{
 			Image:        spec.Image,
@@ -189,6 +213,8 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) 
 		},
 		&container.HostConfig{
 			PortBindings: portBindings,
+			Resources:    resources,
+			Mounts:       mounts,
 		},
 		&network.NetworkingConfig{},
 		nil,

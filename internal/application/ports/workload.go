@@ -53,6 +53,9 @@ type RuntimeHints struct {
 	ExposeUDP          bool   `json:"expose_udp,omitempty"`
 	HealthCheckPath    string `json:"health_check_path,omitempty"`
 	HealthCheckPort    int    `json:"health_check_port,omitempty"`
+	PersistentStorage  bool   `json:"persistent_storage,omitempty"`
+	StoragePath        string `json:"storage_path,omitempty"`
+	StorageGB          int    `json:"storage_gb,omitempty"`
 }
 
 // WorkloadHealth is the per-workload status reported in heartbeats.
