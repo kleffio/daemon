@@ -35,6 +35,15 @@ func New(nodeID string) (*Adapter, error) {
 	return &Adapter{client: c, nodeID: nodeID}, nil
 }
 
+// Ping checks if the Docker daemon is reachable.
+func (a *Adapter) Ping(ctx context.Context) error {
+	_, err := a.client.Ping(ctx)
+	if err != nil {
+		return fmt.Errorf("docker daemon unreachable: %w", err)
+	}
+	return nil
+}
+
 // Deploy pulls the image and starts a new container.
 func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
 	// Pull image and wait for completion.

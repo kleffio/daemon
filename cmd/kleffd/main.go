@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -82,31 +83,36 @@ func main() {
 }
 
 func detectRuntime(cfg *config.Config, logger ports.Logger) (ports.RuntimeAdapter, error) {
-	// Explicit kubeconfig → always Kubernetes.
+	ctx := context.Background()
+
+	// Explicit kubeconfig → always Kubernetes, fail hard if unreachable.
 	if cfg.Kubeconfig != "" {
 		adapter, err := k8sadapter.New(cfg.Kubeconfig, cfg.KubeNamespace, cfg.NodeID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("kubernetes runtime unavailable: %w", err)
 		}
 		logger.Info("Runtime: Kubernetes", "kubeconfig", cfg.Kubeconfig)
 		return adapter, nil
 	}
 
-	// In-cluster environment detected → Kubernetes.
+	// In-cluster environment → Kubernetes, fail hard if unreachable.
 	if _, err := rest.InClusterConfig(); err == nil {
 		adapter, err := k8sadapter.New("", cfg.KubeNamespace, cfg.NodeID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("kubernetes in-cluster runtime unavailable: %w", err)
 		}
 		logger.Info("Runtime: Kubernetes (in-cluster)")
 		return adapter, nil
 	}
 
-	// Fall back to Docker.
-	adapter, err := dockeradapter.New(cfg.NodeID)
+	// No Kubernetes — check if Docker is actually reachable before using it.
+	dockerAdapter, err := dockeradapter.New(cfg.NodeID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no runtime available: kubernetes not detected, docker client failed: %w", err)
+	}
+	if err := dockerAdapter.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("no runtime available: kubernetes not detected, docker unreachable: %w", err)
 	}
 	logger.Info("Runtime: Docker")
-	return adapter, nil
+	return dockerAdapter, nil
 }
