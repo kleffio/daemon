@@ -1,5 +1,14 @@
 package ports
 
+import "github.com/kleffio/kleff-daemon/pkg/labels"
+
+// RunningServer is the result returned by Deploy/Start.
+type RunningServer struct {
+	Labels     labels.WorkloadLabels
+	RuntimeRef string
+	State      string
+}
+
 // WorkloadSpec is the typed payload for all workload operations.
 // It is a superset of the old ServerOperationPayload — all existing fields carry over.
 type WorkloadSpec struct {

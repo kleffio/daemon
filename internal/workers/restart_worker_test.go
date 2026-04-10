@@ -9,7 +9,6 @@ import (
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
@@ -29,12 +28,12 @@ func TestRestartWorkerHandleSuccess(t *testing.T) {
 
 	worker := workers.NewRestartWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:  "owner-1",
 		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -47,19 +46,19 @@ func TestRestartWorkerHandleSuccess(t *testing.T) {
 
 func TestRestartWorkerStopFailure(t *testing.T) {
 	runtime := &mockRuntime{
-		stopErr: fmt.Errorf("agones unavailable"),
+		stopErr: fmt.Errorf("runtime unavailable"),
 	}
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
 	worker := workers.NewRestartWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:  "owner-1",
 		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when stop fails")
@@ -68,19 +67,19 @@ func TestRestartWorkerStopFailure(t *testing.T) {
 
 func TestRestartWorkerStartFailure(t *testing.T) {
 	runtime := &mockRuntime{
-		returnErr: fmt.Errorf("agones unavailable"),
+		returnErr: fmt.Errorf("runtime unavailable"),
 	}
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
 	worker := workers.NewRestartWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:  "owner-1",
 		ServerID: "test-server",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when start fails")

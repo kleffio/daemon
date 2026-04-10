@@ -6,45 +6,37 @@ import (
 
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 type DeleteWorker struct {
-	runtime    ports.ContainerRuntime
+	runtime    ports.RuntimeAdapter
 	repository ports.ServerRepository
 	logger     ports.Logger
 }
 
-func NewDeleteWorker(runtime ports.ContainerRuntime, repository ports.ServerRepository, logger ports.Logger) *DeleteWorker {
-	return &DeleteWorker{
-		runtime:    runtime,
-		repository: repository,
-		logger:     logger,
-	}
+func NewDeleteWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger) *DeleteWorker {
+	return &DeleteWorker{runtime: runtime, repository: repository, logger: logger}
 }
 
 func (w *DeleteWorker) Handle(ctx context.Context, job *jobs.Job) error {
-	log := w.logger.With(
-		ports.LogKeyJobID, job.JobID,
-		ports.LogKeyWorkerType, "server.delete",
-	)
+	log := w.logger.With(ports.LogKeyJobID, job.JobID, ports.LogKeyWorkerType, "server.delete")
 
-	var payload payloads.ServerOperationPayload
-	if err := job.UnmarshalPayload(&payload); err != nil {
+	var spec ports.WorkloadSpec
+	if err := job.UnmarshalPayload(&spec); err != nil {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Deleting server", ports.LogKeyServerID, payload.ServerID)
+	log.Info("Deleting server", ports.LogKeyServerID, spec.ServerID)
 
-	if err := w.runtime.Delete(ctx, payload.ServerID); err != nil {
+	if err := w.runtime.Remove(ctx, spec.ServerID); err != nil {
 		log.Error("Failed to delete server", err)
 		return fmt.Errorf("delete failed: %w", err)
 	}
 
-	if err := w.repository.UpdateStatus(ctx, payload.ServerID, "deleted"); err != nil {
-		log.Warn("Failed to update server status after delete", "server_id", payload.ServerID)
+	if err := w.repository.UpdateStatus(ctx, spec.ServerID, "deleted"); err != nil {
+		log.Warn("Failed to update server status after delete", "server_id", spec.ServerID)
 	}
 
-	log.Info("Server deleted successfully", ports.LogKeyServerID, payload.ServerID)
+	log.Info("Server deleted successfully", ports.LogKeyServerID, spec.ServerID)
 	return nil
 }

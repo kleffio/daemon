@@ -9,7 +9,6 @@ import (
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
@@ -29,7 +28,7 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 
 	worker := workers.NewProvisionWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:     "owner-1",
 		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
@@ -40,14 +39,14 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 		},
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if !runtime.startCalled {
-		t.Error("expected runtime.Start to be called")
+	if !runtime.deployCalled {
+		t.Error("expected runtime.Deploy to be called")
 	}
 	if !repo.saveCalled {
 		t.Error("expected repository.Save to be called")
@@ -59,21 +58,21 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 
 func TestProvisionWorkerHandleRuntimeFailure(t *testing.T) {
 	runtime := &mockRuntime{
-		returnErr: fmt.Errorf("agones unavailable"),
+		returnErr: fmt.Errorf("runtime unavailable"),
 	}
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
 	worker := workers.NewProvisionWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:     "owner-1",
 		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerProvision, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")

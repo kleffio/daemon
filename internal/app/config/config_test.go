@@ -13,8 +13,8 @@ func resetViperAndFlags() {
 	pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
 }
 
-// setRequiredKleffVars sets the two new required KLEFF_* vars that every
-// test must supply unless it is specifically testing their absence.
+// setRequiredKleffVars sets the required KLEFF_* vars that every test must supply
+// unless it is specifically testing their absence.
 func setRequiredKleffVars(t *testing.T) {
 	t.Helper()
 	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
@@ -25,11 +25,8 @@ func setRequiredKleffVars(t *testing.T) {
 	})
 }
 
-func TestConfigLoadsCorrectlyDefaults(t *testing.T) {
+func TestConfigLoadsDefaults(t *testing.T) {
 	resetViperAndFlags()
-
-	os.Unsetenv("KLEFF_RUNTIME_MODE")
-	os.Unsetenv("KLEFF_CLUSTER_REGION")
 
 	os.Setenv("KLEFF_NODE_ID", "default-node")
 	defer os.Unsetenv("KLEFF_NODE_ID")
@@ -40,26 +37,24 @@ func TestConfigLoadsCorrectlyDefaults(t *testing.T) {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	if cfg.RuntimeMode != RuntimeModeDocker {
-		t.Errorf("Expected default runtime mode 'docker', got '%s'", cfg.RuntimeMode)
-	}
 	if cfg.GRPCPort != 50051 {
 		t.Errorf("Expected default gRPC port 50051, got %d", cfg.GRPCPort)
 	}
 	if cfg.QueueBackend != QueueBackendMemory {
 		t.Errorf("Expected default queue backend 'memory', got '%s'", cfg.QueueBackend)
 	}
+	if cfg.KubeNamespace != "default" {
+		t.Errorf("Expected default kube namespace 'default', got '%s'", cfg.KubeNamespace)
+	}
 }
 
-func TestConfigRuntimeModeConfigurableViaEnv(t *testing.T) {
+func TestConfigQueueBackendViaEnv(t *testing.T) {
 	resetViperAndFlags()
 
 	os.Setenv("KLEFF_NODE_ID", "env-node")
-	os.Setenv("KLEFF_RUNTIME_MODE", "kubernetes")
 	os.Setenv("KLEFF_QUEUE_BACKEND", "redis")
 	defer func() {
 		os.Unsetenv("KLEFF_NODE_ID")
-		os.Unsetenv("KLEFF_RUNTIME_MODE")
 		os.Unsetenv("KLEFF_QUEUE_BACKEND")
 	}()
 	setRequiredKleffVars(t)
@@ -69,9 +64,6 @@ func TestConfigRuntimeModeConfigurableViaEnv(t *testing.T) {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	if cfg.RuntimeMode != RuntimeModeKubernetes {
-		t.Errorf("Expected runtime mode 'kubernetes', got '%s'", cfg.RuntimeMode)
-	}
 	if cfg.QueueBackend != QueueBackendRedis {
 		t.Errorf("Expected queue backend 'redis', got '%s'", cfg.QueueBackend)
 	}
@@ -109,7 +101,6 @@ func TestConfigNodesAndPortsViaEnv(t *testing.T) {
 func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 	resetViperAndFlags()
 
-	os.Setenv("KLEFF_RUNTIME_MODE", "docker")
 	os.Setenv("KLEFF_QUEUE_BACKEND", "memory")
 	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
 	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
@@ -121,23 +112,11 @@ func TestConfigValidationFailsForInvalidInputs(t *testing.T) {
 
 	resetViperAndFlags()
 	os.Setenv("KLEFF_NODE_ID", "valid-node")
-	os.Setenv("KLEFF_RUNTIME_MODE", "invalid-runtime")
-	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
-	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
-	_, err = Load()
-	if err == nil {
-		t.Errorf("Expected validation to fail for invalid runtime.mode")
-	}
-
-	resetViperAndFlags()
-	os.Setenv("KLEFF_NODE_ID", "valid-node")
-	os.Setenv("KLEFF_RUNTIME_MODE", "docker")
 	os.Setenv("KLEFF_QUEUE_BACKEND", "invalid-queue")
 	os.Setenv("KLEFF_PLATFORM_URL", "http://platform.test")
 	os.Setenv("KLEFF_SHARED_SECRET", "test-secret")
 	defer func() {
 		os.Unsetenv("KLEFF_NODE_ID")
-		os.Unsetenv("KLEFF_RUNTIME_MODE")
 		os.Unsetenv("KLEFF_QUEUE_BACKEND")
 		os.Unsetenv("KLEFF_PLATFORM_URL")
 		os.Unsetenv("KLEFF_SHARED_SECRET")
@@ -152,8 +131,6 @@ func TestConfigPrecedence(t *testing.T) {
 	resetViperAndFlags()
 
 	yamlContent := []byte(`
-runtime:
-  mode: docker
 node:
   id: file-node
 grpc:
@@ -165,12 +142,8 @@ grpc:
 	}
 	defer os.Remove("config.yaml")
 
-	os.Setenv("KLEFF_RUNTIME_MODE", "kubernetes")
 	os.Setenv("KLEFF_NODE_ID", "env-node")
-	defer func() {
-		os.Unsetenv("KLEFF_RUNTIME_MODE")
-		os.Unsetenv("KLEFF_NODE_ID")
-	}()
+	defer os.Unsetenv("KLEFF_NODE_ID")
 	setRequiredKleffVars(t)
 
 	os.Args = []string{"cmd", "--node.id=flag-node"}
@@ -181,12 +154,9 @@ grpc:
 	}
 
 	if cfg.NodeID != "flag-node" {
-		t.Errorf("Expected node.id to be 'flag-node' (Flag precedence), got '%s'", cfg.NodeID)
-	}
-	if cfg.RuntimeMode != RuntimeModeKubernetes {
-		t.Errorf("Expected runtime.mode to be 'kubernetes' (Env precedence over File), got '%s'", cfg.RuntimeMode)
+		t.Errorf("Expected node.id to be 'flag-node' (flag precedence), got '%s'", cfg.NodeID)
 	}
 	if cfg.GRPCPort != 10000 {
-		t.Errorf("Expected grpc.port to be 10000 (File precedence over Default), got %d", cfg.GRPCPort)
+		t.Errorf("Expected grpc.port to be 10000 (file precedence over default), got %d", cfg.GRPCPort)
 	}
 }

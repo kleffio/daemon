@@ -6,48 +6,39 @@ import (
 
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 type ProvisionWorker struct {
-	runtime    ports.ContainerRuntime
+	runtime    ports.RuntimeAdapter
 	repository ports.ServerRepository
 	logger     ports.Logger
 }
 
-func NewProvisionWorker(runtime ports.ContainerRuntime, repository ports.ServerRepository, logger ports.Logger) *ProvisionWorker {
-	return &ProvisionWorker{
-		runtime:    runtime,
-		repository: repository,
-		logger:     logger,
-	}
+func NewProvisionWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger) *ProvisionWorker {
+	return &ProvisionWorker{runtime: runtime, repository: repository, logger: logger}
 }
 
 func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
-	log := w.logger.With(
-		ports.LogKeyJobID, job.JobID,
-		ports.LogKeyWorkerType, "server.provision",
-	)
+	log := w.logger.With(ports.LogKeyJobID, job.JobID, ports.LogKeyWorkerType, "server.provision")
 
-	var payload payloads.ServerOperationPayload
-	if err := job.UnmarshalPayload(&payload); err != nil {
+	var spec ports.WorkloadSpec
+	if err := job.UnmarshalPayload(&spec); err != nil {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Provisioning server", ports.LogKeyServerID, payload.ServerID)
+	log.Info("Provisioning server", ports.LogKeyServerID, spec.ServerID)
 
-	server, err := w.runtime.Provision(ctx, payload)
+	server, err := w.runtime.Deploy(ctx, spec)
 	if err != nil {
 		log.Error("Failed to provision server", err)
 		return fmt.Errorf("provision failed: %w", err)
 	}
 
 	record := &ports.ServerRecord{
-		ID:         payload.ServerID,
-		Name:       payload.ServerID,
+		ID:         spec.ServerID,
+		Name:       spec.ServerID,
 		Status:     server.State,
 		NodeID:     server.Labels.NodeID,
-		Runtime:    "agones",
 		RuntimeRef: server.RuntimeRef,
 	}
 
