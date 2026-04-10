@@ -9,7 +9,6 @@ import (
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
 
@@ -29,7 +28,7 @@ func TestStartWorkerHandleSuccess(t *testing.T) {
 
 	worker := workers.NewStartWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:     "owner-1",
 		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
@@ -40,7 +39,7 @@ func TestStartWorkerHandleSuccess(t *testing.T) {
 		},
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -60,14 +59,14 @@ func TestStartWorkerHandleRuntimeFailure(t *testing.T) {
 
 	worker := workers.NewStartWorker(runtime, repo, logger)
 
-	payload := payloads.ServerOperationPayload{
+	spec := ports.WorkloadSpec{
 		OwnerID:     "owner-1",
 		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
 		Image:       "itzg/minecraft-server:latest",
 	}
 
-	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", payload, 3)
+	job, _ := jobs.New(jobs.JobTypeServerStart, "test-server", spec, 3)
 
 	if err := worker.Handle(context.Background(), job); err == nil {
 		t.Error("expected error when runtime fails")

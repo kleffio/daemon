@@ -2,41 +2,39 @@ package workers_test
 
 import (
 	"context"
+	"io"
 
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
-	"github.com/kleffio/kleff-daemon/internal/workers/payloads"
 )
 
 type mockRuntime struct {
-	provisionCalled bool
-	startCalled     bool
-	returnServer    *ports.RunningServer
-	returnErr       error
-	deleteErr       error
-	stopErr         error
+	deployCalled bool
+	startCalled  bool
+	returnServer *ports.RunningServer
+	returnErr    error
+	removeErr    error
+	stopErr      error
 }
 
-func (m *mockRuntime) Provision(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
-	m.provisionCalled = true
+func (m *mockRuntime) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
+	m.deployCalled = true
 	return m.returnServer, m.returnErr
 }
 
-func (m *mockRuntime) Start(ctx context.Context, payload payloads.ServerOperationPayload) (*ports.RunningServer, error) {
+func (m *mockRuntime) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
 	m.startCalled = true
 	return m.returnServer, m.returnErr
 }
 
-func (m *mockRuntime) Stop(ctx context.Context, serverID string) error { return m.stopErr }
-func (m *mockRuntime) Delete(ctx context.Context, serverID string) error {
-	return m.deleteErr
-}
-func (m *mockRuntime) GetByID(ctx context.Context, serverID string) (*ports.RunningServer, error) {
+func (m *mockRuntime) Stop(ctx context.Context, workloadID string) error  { return m.stopErr }
+func (m *mockRuntime) Remove(ctx context.Context, workloadID string) error { return m.removeErr }
+func (m *mockRuntime) Status(ctx context.Context, workloadID string) (*ports.WorkloadHealth, error) {
 	return nil, nil
 }
-func (m *mockRuntime) Reconcile(ctx context.Context, nodeID string) ([]*ports.RunningServer, error) {
-	return nil, nil
+func (m *mockRuntime) Endpoint(ctx context.Context, workloadID string) (string, error) {
+	return "", nil
 }
-func (m *mockRuntime) Stats(ctx context.Context, serverID string) (*ports.RawStats, error) {
+func (m *mockRuntime) Logs(ctx context.Context, workloadID string, follow bool) (io.ReadCloser, error) {
 	return nil, nil
 }
 

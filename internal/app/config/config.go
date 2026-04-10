@@ -9,13 +9,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-type RuntimeMode string
-
-const (
-	RuntimeModeDocker     RuntimeMode = "docker"
-	RuntimeModeKubernetes RuntimeMode = "kubernetes"
-)
-
 type QueueBackend string
 
 const (
@@ -24,7 +17,11 @@ const (
 )
 
 type Config struct {
-	RuntimeMode   RuntimeMode  `mapstructure:"runtime.mode"`
+	// Kubeconfig is optional. If empty and a Kubernetes environment is detected,
+	// the daemon uses in-cluster config. If set, it can be a kubeconfig file path
+	// or an API server URL (e.g. http://localhost:8001).
+	Kubeconfig    string       `mapstructure:"kubeconfig"`
+	KubeNamespace string       `mapstructure:"kube.namespace"`
 	ClusterRegion string       `mapstructure:"cluster.region"`
 	NodeID        string       `mapstructure:"node.id"`
 	GRPCPort      int          `mapstructure:"grpc.port"`
@@ -39,13 +36,6 @@ type Config struct {
 }
 
 func (c *Config) Validate() error {
-	switch c.RuntimeMode {
-	case RuntimeModeDocker, RuntimeModeKubernetes:
-		// valid
-	default:
-		return fmt.Errorf("invalid runtime.mode: %q (must be 'docker' or 'kubernetes')", c.RuntimeMode)
-	}
-
 	switch c.QueueBackend {
 	case QueueBackendMemory, QueueBackendRedis:
 		// valid
@@ -69,7 +59,6 @@ func (c *Config) Validate() error {
 }
 
 func Load() (*Config, error) {
-
 	v := viper.New()
 
 	hostname, err := os.Hostname()
@@ -77,7 +66,8 @@ func Load() (*Config, error) {
 		hostname = "unknown-node"
 	}
 
-	v.SetDefault("runtime.mode", string(RuntimeModeDocker))
+	v.SetDefault("kubeconfig", "")
+	v.SetDefault("kube.namespace", "default")
 	v.SetDefault("cluster.region", "local")
 	v.SetDefault("node.id", hostname)
 	v.SetDefault("grpc.port", 50051)
@@ -108,7 +98,8 @@ func Load() (*Config, error) {
 	fs := pflag.NewFlagSet("kleff", pflag.ContinueOnError)
 	fs.ParseErrorsWhitelist.UnknownFlags = true
 
-	fs.String("runtime.mode", v.GetString("runtime.mode"), "Runtime mode for the daemon (e.g. docker, kubernetes)")
+	fs.String("kubeconfig", v.GetString("kubeconfig"), "Path to kubeconfig file, or API server URL (empty = auto-detect)")
+	fs.String("kube.namespace", v.GetString("kube.namespace"), "Kubernetes namespace to deploy workloads into")
 	fs.String("cluster.region", v.GetString("cluster.region"), "Cluster region this daemon belongs to")
 	fs.String("node.id", v.GetString("node.id"), "Unique identifier for this daemon node")
 	fs.Int("grpc.port", v.GetInt("grpc.port"), "Port for the gRPC server to listen on")
@@ -118,23 +109,24 @@ func Load() (*Config, error) {
 	fs.Parse(os.Args[1:])
 	v.BindPFlags(fs)
 
-	var config Config
-	config.RuntimeMode = RuntimeMode(v.GetString("runtime.mode"))
-	config.ClusterRegion = v.GetString("cluster.region")
-	config.NodeID = v.GetString("node.id")
-	config.GRPCPort = v.GetInt("grpc.port")
-	config.MetricsPort = v.GetInt("metrics.port")
-	config.QueueBackend = QueueBackend(v.GetString("queue.backend"))
-	config.DatabasePath = v.GetString("database.path")
-	config.RedisURL = v.GetString("redis.url")
-	config.RedisPassword = v.GetString("redis.password")
-	config.RedisTLS = v.GetBool("redis.tls")
-	config.PlatformURL = v.GetString("platform.url")
-	config.SharedSecret = v.GetString("shared_secret")
+	var cfg Config
+	cfg.Kubeconfig = v.GetString("kubeconfig")
+	cfg.KubeNamespace = v.GetString("kube.namespace")
+	cfg.ClusterRegion = v.GetString("cluster.region")
+	cfg.NodeID = v.GetString("node.id")
+	cfg.GRPCPort = v.GetInt("grpc.port")
+	cfg.MetricsPort = v.GetInt("metrics.port")
+	cfg.QueueBackend = QueueBackend(v.GetString("queue.backend"))
+	cfg.DatabasePath = v.GetString("database.path")
+	cfg.RedisURL = v.GetString("redis.url")
+	cfg.RedisPassword = v.GetString("redis.password")
+	cfg.RedisTLS = v.GetBool("redis.tls")
+	cfg.PlatformURL = v.GetString("platform.url")
+	cfg.SharedSecret = v.GetString("shared_secret")
 
-	if err := config.Validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
-	return &config, nil
+	return &cfg, nil
 }

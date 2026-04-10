@@ -1,5 +1,14 @@
 package ports
 
+import "github.com/kleffio/kleff-daemon/pkg/labels"
+
+// RunningServer is the result returned by Deploy/Start.
+type RunningServer struct {
+	Labels     labels.WorkloadLabels
+	RuntimeRef string
+	State      string
+}
+
 // WorkloadSpec is the typed payload for all workload operations.
 // It is a superset of the old ServerOperationPayload — all existing fields carry over.
 type WorkloadSpec struct {
@@ -44,6 +53,9 @@ type RuntimeHints struct {
 	ExposeUDP          bool   `json:"expose_udp,omitempty"`
 	HealthCheckPath    string `json:"health_check_path,omitempty"`
 	HealthCheckPort    int    `json:"health_check_port,omitempty"`
+	PersistentStorage  bool   `json:"persistent_storage,omitempty"`
+	StoragePath        string `json:"storage_path,omitempty"`
+	StorageGB          int    `json:"storage_gb,omitempty"`
 }
 
 // WorkloadHealth is the per-workload status reported in heartbeats.
