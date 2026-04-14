@@ -160,7 +160,7 @@ func (a *Adapter) Status(ctx context.Context, workloadID string) (*ports.Workloa
 }
 
 // Endpoint returns the address users connect to.
-func (a *Adapter) Endpoint(ctx context.Context, workloadID string) (string, error) {
+func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort int) (string, error) {
 	strategy, err := a.strategyFor(ctx, workloadID)
 	if err != nil {
 		return "", err

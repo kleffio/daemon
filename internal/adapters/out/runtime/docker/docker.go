@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -88,6 +89,9 @@ func (a *Adapter) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.Ru
 		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
+	// Give Docker a moment to assign port bindings before the caller inspects them.
+	time.Sleep(500 * time.Millisecond)
+
 	return &ports.RunningServer{RuntimeRef: containerID, State: "Running"}, nil
 }
 
@@ -104,7 +108,7 @@ func (a *Adapter) Stop(ctx context.Context, workloadID string) error {
 	return nil
 }
 
-// Remove stops and removes the container.
+// Remove stops and removes the container and its named data volume.
 func (a *Adapter) Remove(ctx context.Context, workloadID string) error {
 	containerID, err := a.findContainer(ctx, workloadID)
 	if err != nil {
@@ -115,6 +119,9 @@ func (a *Adapter) Remove(ctx context.Context, workloadID string) error {
 	if err := a.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
+	// Remove the named data volume so a re-created server with the same name starts fresh.
+	volumeName := fmt.Sprintf("kleff-%s-data", workloadID)
+	_ = a.client.VolumeRemove(ctx, volumeName, true)
 	return nil
 }
 
@@ -132,8 +139,8 @@ func (a *Adapter) Status(ctx context.Context, workloadID string) (*ports.Workloa
 	return &ports.WorkloadHealth{WorkloadID: workloadID, State: state}, nil
 }
 
-// Endpoint returns the first exposed host port.
-func (a *Adapter) Endpoint(ctx context.Context, workloadID string) (string, error) {
+// Endpoint returns the host:port for the given container-side primaryPort.
+func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort int) (string, error) {
 	containerID, err := a.findContainer(ctx, workloadID)
 	if err != nil {
 		return "", err
@@ -142,6 +149,14 @@ func (a *Adapter) Endpoint(ctx context.Context, workloadID string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
+	// Try the requested port first (both tcp and udp).
+	for _, proto := range []string{"tcp", "udp"} {
+		key := nat.Port(fmt.Sprintf("%d/%s", primaryPort, proto))
+		if bindings, ok := info.NetworkSettings.Ports[key]; ok && len(bindings) > 0 {
+			return fmt.Sprintf("127.0.0.1:%s", bindings[0].HostPort), nil
+		}
+	}
+	// Fallback: return whichever port is available.
 	for _, bindings := range info.NetworkSettings.Ports {
 		if len(bindings) > 0 {
 			return fmt.Sprintf("127.0.0.1:%s", bindings[0].HostPort), nil
@@ -230,6 +245,9 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) 
 		spec.ServerID,
 	)
 	if err != nil {
+		if strings.Contains(err.Error(), "Conflict") || strings.Contains(err.Error(), "already in use") {
+			return "", fmt.Errorf("container name %q already in use: %w", spec.ServerID, ports.ErrPermanent)
+		}
 		return "", fmt.Errorf("failed to create container: %w", err)
 	}
 	return resp.ID, nil

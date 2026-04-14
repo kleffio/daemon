@@ -4,18 +4,20 @@ import (
 	"context"
 	"fmt"
 
+	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type StopWorker struct {
-	runtime    ports.RuntimeAdapter
-	repository ports.ServerRepository
-	logger     ports.Logger
+	runtime        ports.RuntimeAdapter
+	repository     ports.ServerRepository
+	logger         ports.Logger
+	platformClient *platformclient.Client
 }
 
-func NewStopWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger) *StopWorker {
-	return &StopWorker{runtime: runtime, repository: repository, logger: logger}
+func NewStopWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, platformClient *platformclient.Client) *StopWorker {
+	return &StopWorker{runtime: runtime, repository: repository, logger: logger, platformClient: platformClient}
 }
 
 func (w *StopWorker) Handle(ctx context.Context, job *jobs.Job) error {
@@ -35,6 +37,10 @@ func (w *StopWorker) Handle(ctx context.Context, job *jobs.Job) error {
 
 	if err := w.repository.UpdateStatus(ctx, spec.ServerID, "stopped"); err != nil {
 		log.Warn("Failed to update server status after stop", "server_id", spec.ServerID)
+	}
+
+	if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "rolled_back"); err != nil {
+		log.Error("Failed to report status to platform", err)
 	}
 
 	log.Info("Server stopped successfully", ports.LogKeyServerID, spec.ServerID)
