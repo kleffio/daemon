@@ -10,6 +10,7 @@ import (
 
 	"github.com/kleffio/kleff-daemon/internal/adapters/out/db"
 	"github.com/kleffio/kleff-daemon/internal/adapters/out/observability/logging"
+	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	queueadapter "github.com/kleffio/kleff-daemon/internal/adapters/out/queue"
 	memrepo "github.com/kleffio/kleff-daemon/internal/adapters/out/repository/memory"
 	dockeradapter "github.com/kleffio/kleff-daemon/internal/adapters/out/runtime/docker"
@@ -65,13 +66,16 @@ func main() {
 	// --- Repository ---
 	repo := memrepo.NewServerRepository()
 
+	// --- Platform client ---
+	pc := platformclient.New(cfg.PlatformURL, cfg.SharedSecret)
+
 	// --- Dispatcher + workers ---
 	dispatcher := workers.NewDispatcher(q, 4)
-	dispatcher.Register(jobs.JobTypeServerProvision, workers.NewProvisionWorker(runtime, repo, daemonLog).Handle)
-	dispatcher.Register(jobs.JobTypeServerStart, workers.NewStartWorker(runtime, repo, daemonLog).Handle)
-	dispatcher.Register(jobs.JobTypeServerStop, workers.NewStopWorker(runtime, repo, daemonLog).Handle)
+	dispatcher.Register(jobs.JobTypeServerProvision, workers.NewProvisionWorker(runtime, repo, daemonLog, pc).Handle)
+	dispatcher.Register(jobs.JobTypeServerStart, workers.NewStartWorker(runtime, repo, daemonLog, pc).Handle)
+	dispatcher.Register(jobs.JobTypeServerStop, workers.NewStopWorker(runtime, repo, daemonLog, pc).Handle)
 	dispatcher.Register(jobs.JobTypeServerDelete, workers.NewDeleteWorker(runtime, repo, daemonLog).Handle)
-	dispatcher.Register(jobs.JobTypeServerRestart, workers.NewRestartWorker(runtime, repo, daemonLog).Handle)
+	dispatcher.Register(jobs.JobTypeServerRestart, workers.NewRestartWorker(runtime, repo, daemonLog, pc).Handle)
 
 	daemonLog.Info("Daemon started", "node_id", cfg.NodeID, "grpc_port", cfg.GRPCPort)
 

@@ -1,5 +1,5 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -7,16 +7,12 @@ WORKDIR /build
 
 # Copy module manifests first for better layer caching.
 COPY go.mod go.sum ./
-# go.mod declares "go 1.25.5" which is a typo — patch it down to 1.23 so the
-# image toolchain accepts it. This only affects the in-container copy.
-RUN go mod edit -go=1.24.0 && go mod download
+RUN go mod download
 
-# Copy full source. Re-patch go.mod because COPY . . overwrites the edited copy,
-# then build. modernc/sqlite is pure Go — CGO_ENABLED=0 is safe.
+# Copy full source and build. modernc/sqlite is pure Go — CGO_ENABLED=0 is safe.
 COPY . .
 
-RUN go mod edit -go=1.24.0 && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build \
     -ldflags="-w -s" \
     -trimpath \

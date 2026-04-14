@@ -3,19 +3,20 @@ package workers
 import (
 	"context"
 	"fmt"
-
+	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type RestartWorker struct {
-	runtime    ports.RuntimeAdapter
-	repository ports.ServerRepository
-	logger     ports.Logger
+	runtime        ports.RuntimeAdapter
+	repository     ports.ServerRepository
+	logger         ports.Logger
+	platformClient *platformclient.Client
 }
 
-func NewRestartWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger) *RestartWorker {
-	return &RestartWorker{runtime: runtime, repository: repository, logger: logger}
+func NewRestartWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, platformClient *platformclient.Client) *RestartWorker {
+	return &RestartWorker{runtime: runtime, repository: repository, logger: logger, platformClient: platformClient}
 }
 
 func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
@@ -27,6 +28,11 @@ func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	}
 
 	log.Info("Restarting server", ports.LogKeyServerID, spec.ServerID)
+
+	// Tell the platform we're restarting so the UI can show it.
+	if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "restarting"); err != nil {
+		log.Error("Failed to report restarting status to platform", err)
+	}
 
 	if err := w.runtime.Stop(ctx, spec.ServerID); err != nil {
 		log.Error("Failed to stop server during restart", err)
@@ -41,6 +47,27 @@ func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 
 	if err := w.repository.UpdateStatus(ctx, spec.ServerID, server.State); err != nil {
 		log.Warn("Failed to update server status after restart", "server_id", spec.ServerID)
+	}
+
+	// Docker assigns a new random port on each start — report the updated address.
+	primaryPort := 0
+	if len(spec.PortRequirements) > 0 {
+		primaryPort = spec.PortRequirements[0].TargetPort
+	}
+	if address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort); err != nil {
+		log.Error("Failed to get endpoint after restart", err)
+		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
+			log.Error("Failed to report status to platform", err)
+		}
+	} else {
+		if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
+			log.Error("Failed to report address to platform after restart — falling back to status-only update", err)
+			if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
+				log.Error("Failed to report succeeded status to platform", err)
+			}
+		} else {
+			log.Info("Address reported to platform after restart", ports.LogKeyServerID, spec.ServerID, "address", address)
+		}
 	}
 
 	log.Info("Server restarted successfully", ports.LogKeyServerID, spec.ServerID)

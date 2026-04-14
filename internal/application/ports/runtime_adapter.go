@@ -19,7 +19,8 @@ type RuntimeAdapter interface {
 	// Status returns the current health and resource usage of a workload.
 	Status(ctx context.Context, workloadID string) (*WorkloadHealth, error)
 	// Endpoint returns the host:port address players/users connect to.
-	Endpoint(ctx context.Context, workloadID string) (string, error)
+	// primaryPort is the container-side port number to look up (e.g. 25565 for Minecraft).
+	Endpoint(ctx context.Context, workloadID string, primaryPort int) (string, error)
 	// Logs streams the workload's stdout/stderr.
 	Logs(ctx context.Context, workloadID string, follow bool) (io.ReadCloser, error)
 }

@@ -3,19 +3,22 @@ package workers
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type ProvisionWorker struct {
-	runtime    ports.RuntimeAdapter
-	repository ports.ServerRepository
-	logger     ports.Logger
+	runtime        ports.RuntimeAdapter
+	repository     ports.ServerRepository
+	logger         ports.Logger
+	platformClient *platformclient.Client
 }
 
-func NewProvisionWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger) *ProvisionWorker {
-	return &ProvisionWorker{runtime: runtime, repository: repository, logger: logger}
+func NewProvisionWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, platformClient *platformclient.Client) *ProvisionWorker {
+	return &ProvisionWorker{runtime: runtime, repository: repository, logger: logger, platformClient: platformClient}
 }
 
 func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
@@ -31,6 +34,9 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	server, err := w.runtime.Deploy(ctx, spec)
 	if err != nil {
 		log.Error("Failed to provision server", err)
+		if strings.Contains(err.Error(), "Invalid container name") {
+			return fmt.Errorf("provision failed (bad name): %w: %w", err, ports.ErrPermanent)
+		}
 		return fmt.Errorf("provision failed: %w", err)
 	}
 
@@ -48,5 +54,31 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	}
 
 	log.Info("Server provisioned successfully", ports.LogKeyServerID, record.ID, "runtime_ref", record.RuntimeRef)
+
+	// Always mark the deployment as succeeded — the server is running.
+	// Attempt to get the address too; if that fails the status still updates.
+	primaryPort := 0
+	if len(spec.PortRequirements) > 0 {
+		primaryPort = spec.PortRequirements[0].TargetPort
+	}
+	address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort)
+	if err != nil {
+		log.Error("Failed to get server endpoint — reporting succeeded without address", err)
+		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
+			log.Error("Failed to report succeeded status to platform", err)
+		}
+		return nil
+	}
+
+	// ReportAddress updates both the address and status to succeeded in one call.
+	if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
+		log.Error("Failed to report address to platform — falling back to status-only update", err)
+		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
+			log.Error("Failed to report succeeded status to platform", err)
+		}
+	} else {
+		log.Info("Address reported to platform", ports.LogKeyServerID, spec.ServerID, "address", address)
+	}
+
 	return nil
 }

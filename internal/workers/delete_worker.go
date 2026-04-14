@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
@@ -29,8 +30,12 @@ func (w *DeleteWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	log.Info("Deleting server", ports.LogKeyServerID, spec.ServerID)
 
 	if err := w.runtime.Remove(ctx, spec.ServerID); err != nil {
-		log.Error("Failed to delete server", err)
-		return fmt.Errorf("delete failed: %w", err)
+		if strings.Contains(err.Error(), "container not found") {
+			log.Info("Container already gone, treating delete as complete", ports.LogKeyServerID, spec.ServerID)
+		} else {
+			log.Error("Failed to delete server", err)
+			return fmt.Errorf("delete failed: %w", err)
+		}
 	}
 
 	if err := w.repository.UpdateStatus(ctx, spec.ServerID, "deleted"); err != nil {

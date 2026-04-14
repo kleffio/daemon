@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -63,7 +64,7 @@ func (d *Dispatcher) Run(ctx context.Context) {
 
 			err := h(ctx, j)
 			if err != nil {
-				if j.CanRetry() {
+				if !errors.Is(err, ports.ErrPermanent) && j.CanRetry() {
 					d.queue.Retry(j.JobID)
 				} else {
 					d.queue.MarkFailed(j.JobID)
