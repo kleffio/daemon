@@ -3,6 +3,8 @@ package workers
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
@@ -32,6 +34,9 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	server, err := w.runtime.Deploy(ctx, spec)
 	if err != nil {
 		log.Error("Failed to provision server", err)
+		if strings.Contains(err.Error(), "Invalid container name") {
+			return fmt.Errorf("provision failed (bad name): %w: %w", err, ports.ErrPermanent)
+		}
 		return fmt.Errorf("provision failed: %w", err)
 	}
 
