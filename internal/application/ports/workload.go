@@ -20,6 +20,7 @@ type WorkloadSpec struct {
 
 	// Blueprint details required for provision/start
 	Image            string            `json:"image"`
+	Command          string            `json:"command,omitempty"`
 	BlueprintVersion string            `json:"blueprint_version,omitempty"`
 	EnvOverrides     map[string]string `json:"env_overrides,omitempty"`
 	MemoryBytes      int64             `json:"memory_bytes,omitempty"`
