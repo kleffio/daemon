@@ -106,8 +106,21 @@ func (a *Adapter) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.Ru
 	}
 }
 
+// EnsureProjectScope is a no-op on Kubernetes for now. Project isolation will
+// be implemented via a per-project namespace once the platform module lands.
+func (a *Adapter) EnsureProjectScope(_ context.Context, projectID, projectSlug string) (*ports.ProjectScope, error) {
+	return &ports.ProjectScope{
+		ProjectID:   projectID,
+		ProjectSlug: projectSlug,
+		NetworkName: a.namespace,
+	}, nil
+}
+
+// TeardownProjectScope is a no-op on Kubernetes for now.
+func (a *Adapter) TeardownProjectScope(_ context.Context, _ string) error { return nil }
+
 // Stop suspends a workload without removing it.
-func (a *Adapter) Stop(ctx context.Context, workloadID string) error {
+func (a *Adapter) Stop(ctx context.Context, _ string, workloadID string) error {
 	strategy, err := a.strategyFor(ctx, workloadID)
 	if err != nil {
 		return err
@@ -125,7 +138,7 @@ func (a *Adapter) Stop(ctx context.Context, workloadID string) error {
 }
 
 // Remove permanently deletes a workload and all associated resources.
-func (a *Adapter) Remove(ctx context.Context, workloadID string) error {
+func (a *Adapter) Remove(ctx context.Context, _ string, workloadID string) error {
 	strategy, err := a.strategyFor(ctx, workloadID)
 	if err != nil {
 		return err
@@ -141,7 +154,7 @@ func (a *Adapter) Remove(ctx context.Context, workloadID string) error {
 }
 
 // Status returns the current state of a workload.
-func (a *Adapter) Status(ctx context.Context, workloadID string) (*ports.WorkloadHealth, error) {
+func (a *Adapter) Status(ctx context.Context, _ string, workloadID string) (*ports.WorkloadHealth, error) {
 	strategy, err := a.strategyFor(ctx, workloadID)
 	if err != nil {
 		return nil, err
@@ -160,7 +173,7 @@ func (a *Adapter) Status(ctx context.Context, workloadID string) (*ports.Workloa
 }
 
 // Endpoint returns the address users connect to.
-func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort int) (string, error) {
+func (a *Adapter) Endpoint(ctx context.Context, _ string, workloadID string) (string, error) {
 	strategy, err := a.strategyFor(ctx, workloadID)
 	if err != nil {
 		return "", err
@@ -191,7 +204,7 @@ func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort i
 }
 
 // Logs is not yet implemented for Kubernetes.
-func (a *Adapter) Logs(_ context.Context, _ string, _ bool) (io.ReadCloser, error) {
+func (a *Adapter) Logs(_ context.Context, _ string, _ string, _ bool) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(nil)), nil
 }
 

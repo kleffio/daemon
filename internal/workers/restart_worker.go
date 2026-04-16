@@ -3,20 +3,25 @@ package workers
 import (
 	"context"
 	"fmt"
-	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
+	"strings"
+
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type RestartWorker struct {
-	runtime        ports.RuntimeAdapter
-	repository     ports.ServerRepository
-	logger         ports.Logger
-	platformClient *platformclient.Client
+	runtime    ports.RuntimeAdapter
+	repository ports.ServerRepository
+	logger     ports.Logger
+	reporter   ports.WorkloadStatusReporter
 }
 
-func NewRestartWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, platformClient *platformclient.Client) *RestartWorker {
-	return &RestartWorker{runtime: runtime, repository: repository, logger: logger, platformClient: platformClient}
+func NewRestartWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, reporters ...ports.WorkloadStatusReporter) *RestartWorker {
+	var reporter ports.WorkloadStatusReporter = ports.NoopWorkloadStatusReporter{}
+	if len(reporters) > 0 && reporters[0] != nil {
+		reporter = reporters[0]
+	}
+	return &RestartWorker{runtime: runtime, repository: repository, logger: logger, reporter: reporter}
 }
 
 func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
@@ -27,21 +32,35 @@ func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
-	log.Info("Restarting server", ports.LogKeyServerID, spec.ServerID)
-
-	// Tell the platform we're restarting so the UI can show it.
-	if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "restarting"); err != nil {
-		log.Error("Failed to report restarting status to platform", err)
+	if spec.ProjectID == "" {
+		return fmt.Errorf("invalid payload: project_id is required")
 	}
 
-	if err := w.runtime.Stop(ctx, spec.ServerID); err != nil {
+	report := func(status, runtimeRef, endpoint, errMsg string) {
+		if err := w.reporter.ReportStatus(ctx, ports.WorkloadStatusUpdate{
+			WorkloadID:   spec.ServerID,
+			ProjectID:    spec.ProjectID,
+			Status:       status,
+			RuntimeRef:   runtimeRef,
+			Endpoint:     endpoint,
+			ErrorMessage: errMsg,
+		}); err != nil {
+			log.Warn("Failed to report workload status", "workload_id", spec.ServerID, "error", err)
+		}
+	}
+
+	log.Info("Restarting server", ports.LogKeyServerID, spec.ServerID)
+
+	if err := w.runtime.Stop(ctx, spec.ProjectID, spec.ServerID); err != nil {
 		log.Error("Failed to stop server during restart", err)
+		report("failed", "", "", err.Error())
 		return fmt.Errorf("restart failed on stop: %w", err)
 	}
 
 	server, err := w.runtime.Start(ctx, spec)
 	if err != nil {
 		log.Error("Failed to start server during restart", err)
+		report("failed", "", "", err.Error())
 		return fmt.Errorf("restart failed on start: %w", err)
 	}
 
@@ -49,26 +68,11 @@ func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		log.Warn("Failed to update server status after restart", "server_id", spec.ServerID)
 	}
 
-	// Docker assigns a new random port on each start — report the updated address.
-	primaryPort := 0
-	if len(spec.PortRequirements) > 0 {
-		primaryPort = spec.PortRequirements[0].TargetPort
+	endpoint, epErr := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID)
+	if epErr != nil {
+		log.Warn("Failed to resolve endpoint after restart", "workload_id", spec.ServerID, "error", epErr)
 	}
-	if address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort); err != nil {
-		log.Error("Failed to get endpoint after restart", err)
-		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-			log.Error("Failed to report status to platform", err)
-		}
-	} else {
-		if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
-			log.Error("Failed to report address to platform after restart — falling back to status-only update", err)
-			if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-				log.Error("Failed to report succeeded status to platform", err)
-			}
-		} else {
-			log.Info("Address reported to platform after restart", ports.LogKeyServerID, spec.ServerID, "address", address)
-		}
-	}
+	report(strings.ToLower(server.State), server.RuntimeRef, endpoint, "")
 
 	log.Info("Server restarted successfully", ports.LogKeyServerID, spec.ServerID)
 	return nil

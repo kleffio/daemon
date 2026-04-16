@@ -19,8 +19,9 @@ func TestDeleteWorkerHandleSuccess(t *testing.T) {
 	worker := workers.NewDeleteWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-server",
+		OwnerID:   "owner-1",
+		ServerID:  "test-server",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerDelete, "test-server", spec, 3)
@@ -40,8 +41,9 @@ func TestDeleteWorkerHandleRuntimeFailure(t *testing.T) {
 	worker := workers.NewDeleteWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-server",
+		OwnerID:   "owner-1",
+		ServerID:  "test-server",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerDelete, "test-server", spec, 3)

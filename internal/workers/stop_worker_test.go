@@ -19,8 +19,9 @@ func TestStopWorkerHandleSuccess(t *testing.T) {
 	worker := workers.NewStopWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-crate",
+		OwnerID:   "owner-1",
+		ServerID:  "test-crate",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerStop, "test-crate", spec, 3)
@@ -40,8 +41,9 @@ func TestStopWorkerHandleRuntimeFailure(t *testing.T) {
 	worker := workers.NewStopWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-crate",
+		OwnerID:   "owner-1",
+		ServerID:  "test-crate",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerStop, "test-crate", spec, 3)

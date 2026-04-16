@@ -5,20 +5,17 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
+	dnet "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/pkg/labels"
 )
-
-const labelPrefix = "kleff."
 
 // Adapter is a Docker RuntimeAdapter.
 // All three strategies (agones, statefulset, deployment) map to the same
@@ -45,8 +42,85 @@ func (a *Adapter) Ping(ctx context.Context) error {
 	return nil
 }
 
+// EnsureProjectScope creates the per-project bridge network if it does not
+// already exist. The network is the isolation boundary between projects — all
+// containers in a project attach to it, and nothing else can reach them.
+func (a *Adapter) EnsureProjectScope(ctx context.Context, projectID, projectSlug string) (*ports.ProjectScope, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project id is required")
+	}
+	name := projectNetworkName(projectID)
+
+	existing, err := a.client.NetworkList(ctx, dnet.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", labels.ProjectID+"="+projectID)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list networks: %w", err)
+	}
+	if len(existing) > 0 {
+		return &ports.ProjectScope{
+			ProjectID:   projectID,
+			ProjectSlug: projectSlug,
+			NetworkName: existing[0].Name,
+		}, nil
+	}
+
+	netLabels := map[string]string{
+		labels.ManagedBy: labels.ManagedByValue,
+		labels.ProjectID: projectID,
+		labels.NodeID:    a.nodeID,
+	}
+	if projectSlug != "" {
+		netLabels[labels.ProjectSlug] = projectSlug
+	}
+	if _, err := a.client.NetworkCreate(ctx, name, dnet.CreateOptions{
+		Driver: "bridge",
+		Labels: netLabels,
+	}); err != nil {
+		// Tolerate race where another worker created it concurrently.
+		if !strings.Contains(err.Error(), "already exists") {
+			return nil, fmt.Errorf("failed to create project network: %w", err)
+		}
+	}
+
+	return &ports.ProjectScope{
+		ProjectID:   projectID,
+		ProjectSlug: projectSlug,
+		NetworkName: name,
+	}, nil
+}
+
+// TeardownProjectScope removes the per-project network. Caller is responsible
+// for ensuring no containers remain attached.
+func (a *Adapter) TeardownProjectScope(ctx context.Context, projectID string) error {
+	if projectID == "" {
+		return fmt.Errorf("project id is required")
+	}
+	nets, err := a.client.NetworkList(ctx, dnet.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", labels.ProjectID+"="+projectID)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list project networks: %w", err)
+	}
+	for _, n := range nets {
+		if err := a.client.NetworkRemove(ctx, n.ID); err != nil {
+			return fmt.Errorf("failed to remove project network %s: %w", n.Name, err)
+		}
+	}
+	return nil
+}
+
 // Deploy pulls the image and starts a new container.
 func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
+	if spec.ProjectID == "" {
+		return nil, fmt.Errorf("workload spec missing project_id")
+	}
+
+	scope, err := a.EnsureProjectScope(ctx, spec.ProjectID, spec.ProjectSlug)
+	if err != nil {
+		return nil, err
+	}
+
 	// Pull image and wait for completion.
 	rc, err := a.client.ImagePull(ctx, spec.Image, image.PullOptions{})
 	if err != nil {
@@ -58,7 +132,7 @@ func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.R
 	}
 	rc.Close()
 
-	containerID, err := a.createContainer(ctx, spec)
+	containerID, err := a.createContainer(ctx, spec, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +143,12 @@ func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.R
 
 	return &ports.RunningServer{
 		Labels: labels.WorkloadLabels{
-			OwnerID: spec.OwnerID, ServerID: spec.ServerID,
-			BlueprintID: spec.BlueprintID, NodeID: a.nodeID,
+			OwnerID:     spec.OwnerID,
+			ServerID:    spec.ServerID,
+			BlueprintID: spec.BlueprintID,
+			NodeID:      a.nodeID,
+			ProjectID:   spec.ProjectID,
+			ProjectSlug: spec.ProjectSlug,
 		},
 		RuntimeRef: containerID,
 		State:      "Running",
@@ -79,7 +157,10 @@ func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.R
 
 // Start restarts a stopped container. If it no longer exists, re-creates it.
 func (a *Adapter) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
-	containerID, err := a.findContainer(ctx, spec.ServerID)
+	if spec.ProjectID == "" {
+		return nil, fmt.Errorf("workload spec missing project_id")
+	}
+	containerID, err := a.findContainer(ctx, spec.ProjectID, spec.ServerID)
 	if err != nil {
 		// Container gone — re-create it.
 		return a.Deploy(ctx, spec)
@@ -89,15 +170,12 @@ func (a *Adapter) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.Ru
 		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// Give Docker a moment to assign port bindings before the caller inspects them.
-	time.Sleep(500 * time.Millisecond)
-
 	return &ports.RunningServer{RuntimeRef: containerID, State: "Running"}, nil
 }
 
 // Stop stops the container without removing it.
-func (a *Adapter) Stop(ctx context.Context, workloadID string) error {
-	containerID, err := a.findContainer(ctx, workloadID)
+func (a *Adapter) Stop(ctx context.Context, projectID, workloadID string) error {
+	containerID, err := a.findContainer(ctx, projectID, workloadID)
 	if err != nil {
 		return err
 	}
@@ -108,9 +186,9 @@ func (a *Adapter) Stop(ctx context.Context, workloadID string) error {
 	return nil
 }
 
-// Remove stops and removes the container and its named data volume.
-func (a *Adapter) Remove(ctx context.Context, workloadID string) error {
-	containerID, err := a.findContainer(ctx, workloadID)
+// Remove stops and removes the container.
+func (a *Adapter) Remove(ctx context.Context, projectID, workloadID string) error {
+	containerID, err := a.findContainer(ctx, projectID, workloadID)
 	if err != nil {
 		return err
 	}
@@ -119,15 +197,12 @@ func (a *Adapter) Remove(ctx context.Context, workloadID string) error {
 	if err := a.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
-	// Remove the named data volume so a re-created server with the same name starts fresh.
-	volumeName := fmt.Sprintf("kleff-%s-data", workloadID)
-	_ = a.client.VolumeRemove(ctx, volumeName, true)
 	return nil
 }
 
 // Status returns the current state of the container.
-func (a *Adapter) Status(ctx context.Context, workloadID string) (*ports.WorkloadHealth, error) {
-	containerID, err := a.findContainer(ctx, workloadID)
+func (a *Adapter) Status(ctx context.Context, projectID, workloadID string) (*ports.WorkloadHealth, error) {
+	containerID, err := a.findContainer(ctx, projectID, workloadID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +214,9 @@ func (a *Adapter) Status(ctx context.Context, workloadID string) (*ports.Workloa
 	return &ports.WorkloadHealth{WorkloadID: workloadID, State: state}, nil
 }
 
-// Endpoint returns the host:port for the given container-side primaryPort.
-func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort int) (string, error) {
-	containerID, err := a.findContainer(ctx, workloadID)
+// Endpoint returns the first exposed host port.
+func (a *Adapter) Endpoint(ctx context.Context, projectID, workloadID string) (string, error) {
+	containerID, err := a.findContainer(ctx, projectID, workloadID)
 	if err != nil {
 		return "", err
 	}
@@ -149,14 +224,6 @@ func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort i
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
-	// Try the requested port first (both tcp and udp).
-	for _, proto := range []string{"tcp", "udp"} {
-		key := nat.Port(fmt.Sprintf("%d/%s", primaryPort, proto))
-		if bindings, ok := info.NetworkSettings.Ports[key]; ok && len(bindings) > 0 {
-			return fmt.Sprintf("127.0.0.1:%s", bindings[0].HostPort), nil
-		}
-	}
-	// Fallback: return whichever port is available.
 	for _, bindings := range info.NetworkSettings.Ports {
 		if len(bindings) > 0 {
 			return fmt.Sprintf("127.0.0.1:%s", bindings[0].HostPort), nil
@@ -166,8 +233,8 @@ func (a *Adapter) Endpoint(ctx context.Context, workloadID string, primaryPort i
 }
 
 // Logs streams the container's stdout/stderr.
-func (a *Adapter) Logs(ctx context.Context, workloadID string, follow bool) (io.ReadCloser, error) {
-	containerID, err := a.findContainer(ctx, workloadID)
+func (a *Adapter) Logs(ctx context.Context, projectID, workloadID string, follow bool) (io.ReadCloser, error) {
+	containerID, err := a.findContainer(ctx, projectID, workloadID)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +251,7 @@ func (a *Adapter) Logs(ctx context.Context, workloadID string, follow bool) (io.
 
 // --- Helpers ---
 
-func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) (string, error) {
+func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, scope *ports.ProjectScope) (string, error) {
 	env := make([]string, 0, len(spec.EnvOverrides))
 	for k, v := range spec.EnvOverrides {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
@@ -202,12 +269,15 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) 
 		portBindings[natPort] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "0"}} // 0 = random host port
 	}
 
-	containerLabels := map[string]string{
-		labelPrefix + "server_id":    spec.ServerID,
-		labelPrefix + "owner_id":     spec.OwnerID,
-		labelPrefix + "blueprint_id": spec.BlueprintID,
-		labelPrefix + "node_id":      a.nodeID,
+	wl := labels.WorkloadLabels{
+		OwnerID:     spec.OwnerID,
+		ServerID:    spec.ServerID,
+		BlueprintID: spec.BlueprintID,
+		NodeID:      a.nodeID,
+		ProjectID:   spec.ProjectID,
+		ProjectSlug: spec.ProjectSlug,
 	}
+	containerLabels := wl.ToMap()
 
 	resources := container.Resources{}
 	if spec.MemoryBytes > 0 {
@@ -223,9 +293,15 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) 
 	if spec.RuntimeHints.PersistentStorage && spec.RuntimeHints.StoragePath != "" {
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeVolume,
-			Source: fmt.Sprintf("kleff-%s-data", spec.ServerID),
+			Source: projectVolumeName(spec.ProjectID, spec.ServerID),
 			Target: spec.RuntimeHints.StoragePath,
 		})
+	}
+
+	netConfig := &dnet.NetworkingConfig{
+		EndpointsConfig: map[string]*dnet.EndpointSettings{
+			scope.NetworkName: {},
+		},
 	}
 
 	resp, err := a.client.ContainerCreate(ctx,
@@ -240,30 +316,75 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec) 
 			Resources:    resources,
 			Mounts:       mounts,
 		},
-		&network.NetworkingConfig{},
+		netConfig,
 		nil,
 		spec.ServerID,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "Conflict") || strings.Contains(err.Error(), "already in use") {
-			return "", fmt.Errorf("container name %q already in use: %w", spec.ServerID, ports.ErrPermanent)
-		}
 		return "", fmt.Errorf("failed to create container: %w", err)
 	}
 	return resp.ID, nil
 }
 
-// findContainer looks up a container by the kleff server_id label.
-func (a *Adapter) findContainer(ctx context.Context, serverID string) (string, error) {
+// findContainer looks up a container by workload id and verifies that its
+// project label matches the expected project. Returns ErrProjectMismatch if a
+// container with the id exists but belongs to a different project — callers
+// must treat that as an authorization failure, not a missing workload.
+func (a *Adapter) findContainer(ctx context.Context, projectID, workloadID string) (string, error) {
+	if workloadID == "" {
+		return "", fmt.Errorf("workload id is required")
+	}
 	containers, err := a.client.ContainerList(ctx, container.ListOptions{
-		All:     true,
-		Filters: filters.NewArgs(filters.Arg("label", labelPrefix+"server_id="+serverID)),
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", labels.WorkloadID+"="+workloadID),
+			filters.Arg("label", labels.ManagedBy+"="+labels.ManagedByValue),
+		),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to list containers: %w", err)
 	}
 	if len(containers) == 0 {
-		return "", fmt.Errorf("container not found for server %s", serverID)
+		// Fall back to the deprecated server_id label during the transition.
+		containers, err = a.client.ContainerList(ctx, container.ListOptions{
+			All: true,
+			Filters: filters.NewArgs(
+				filters.Arg("label", labels.ServerID+"="+workloadID),
+				filters.Arg("label", labels.ManagedBy+"="+labels.ManagedByValue),
+			),
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to list containers: %w", err)
+		}
 	}
-	return containers[0].ID, nil
+	if len(containers) == 0 {
+		return "", fmt.Errorf("container not found for workload %s", workloadID)
+	}
+	c := containers[0]
+	if projectID != "" {
+		if got := c.Labels[labels.ProjectID]; got != projectID {
+			return "", fmt.Errorf("%w: workload %s belongs to project %q, not %q", ports.ErrProjectMismatch, workloadID, got, projectID)
+		}
+	}
+	return c.ID, nil
+}
+
+// projectNetworkName derives a short, deterministic bridge network name from
+// the project id. Docker network names are case-sensitive and allow [a-zA-Z0-9_.-].
+func projectNetworkName(projectID string) string {
+	return "kleff_proj_" + shortID(projectID)
+}
+
+// projectVolumeName namespaces persistent volumes by project so a stray
+// workload id collision across projects cannot cross-mount data.
+func projectVolumeName(projectID, workloadID string) string {
+	return fmt.Sprintf("kleff_proj_%s_%s_data", shortID(projectID), workloadID)
+}
+
+func shortID(s string) string {
+	s = strings.ReplaceAll(s, "-", "")
+	if len(s) > 12 {
+		s = s[:12]
+	}
+	return s
 }
