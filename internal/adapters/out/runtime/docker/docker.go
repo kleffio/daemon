@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -24,6 +25,8 @@ type Adapter struct {
 	client *client.Client
 	nodeID string
 }
+
+var errContainerNotFound = errors.New("container not found")
 
 func New(nodeID string) (*Adapter, error) {
 	c, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -162,6 +165,12 @@ func (a *Adapter) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.Ru
 	}
 	containerID, err := a.findContainer(ctx, spec.ProjectID, spec.ServerID)
 	if err != nil {
+		if errors.Is(err, ports.ErrProjectMismatch) {
+			return nil, err
+		}
+		if !errors.Is(err, errContainerNotFound) {
+			return nil, err
+		}
 		// Container gone — re-create it.
 		return a.Deploy(ctx, spec)
 	}
@@ -358,7 +367,7 @@ func (a *Adapter) findContainer(ctx context.Context, projectID, workloadID strin
 		}
 	}
 	if len(containers) == 0 {
-		return "", fmt.Errorf("container not found for workload %s", workloadID)
+		return "", fmt.Errorf("%w for workload %s", errContainerNotFound, workloadID)
 	}
 	c := containers[0]
 	if projectID != "" {
