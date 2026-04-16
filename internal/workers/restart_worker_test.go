@@ -29,8 +29,9 @@ func TestRestartWorkerHandleSuccess(t *testing.T) {
 	worker := workers.NewRestartWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-server",
+		OwnerID:   "owner-1",
+		ServerID:  "test-server",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", spec, 3)
@@ -54,8 +55,9 @@ func TestRestartWorkerStopFailure(t *testing.T) {
 	worker := workers.NewRestartWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-server",
+		OwnerID:   "owner-1",
+		ServerID:  "test-server",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", spec, 3)
@@ -75,8 +77,9 @@ func TestRestartWorkerStartFailure(t *testing.T) {
 	worker := workers.NewRestartWorker(runtime, repo, logger)
 
 	spec := ports.WorkloadSpec{
-		OwnerID:  "owner-1",
-		ServerID: "test-server",
+		OwnerID:   "owner-1",
+		ServerID:  "test-server",
+		ProjectID: "proj-1",
 	}
 
 	job, _ := jobs.New(jobs.JobTypeServerRestart, "test-server", spec, 3)

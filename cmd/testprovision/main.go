@@ -30,6 +30,8 @@ func main() {
 		serverID    = "kleff-test-minecraft"
 		ownerID     = "test-owner"
 		blueprintID = "minecraft-vanilla"
+		projectID   = "test-project"
+		projectSlug = "test"
 	)
 
 	mode := "k8s"
@@ -42,6 +44,8 @@ func main() {
 		OwnerID:       ownerID,
 		ServerID:      serverID,
 		BlueprintID:   blueprintID,
+		ProjectID:     projectID,
+		ProjectSlug:   projectSlug,
 		Image:         "itzg/minecraft-server",
 		MemoryBytes:   2048 * 1024 * 1024,
 		CPUMillicores: 500,
@@ -85,7 +89,7 @@ func runDocker(cleanup bool, serverID string, spec ports.WorkloadSpec) {
 
 	if cleanup {
 		fmt.Printf("Removing %s...\n", serverID)
-		if err := adapter.Remove(ctx, serverID); err != nil {
+		if err := adapter.Remove(ctx, spec.ProjectID, serverID); err != nil {
 			log.Fatalf("remove failed: %v", err)
 		}
 		fmt.Println("Removed.")
@@ -108,7 +112,7 @@ func runDocker(cleanup bool, serverID string, spec ports.WorkloadSpec) {
 	fmt.Printf("  RuntimeRef : %s\n", server.RuntimeRef)
 	fmt.Printf("  State      : %s\n", server.State)
 
-	endpoint, err := adapter.Endpoint(ctx, serverID)
+	endpoint, err := adapter.Endpoint(ctx, spec.ProjectID, serverID)
 	if err != nil {
 		fmt.Printf("  Endpoint   : (could not resolve: %v)\n", err)
 	} else {
@@ -134,7 +138,7 @@ func runK8s(cleanup bool, serverID string, spec ports.WorkloadSpec) {
 
 	if cleanup {
 		fmt.Printf("Removing %s...\n", serverID)
-		if err := adapter.Remove(ctx, serverID); err != nil {
+		if err := adapter.Remove(ctx, spec.ProjectID, serverID); err != nil {
 			log.Fatalf("remove failed: %v", err)
 		}
 		fmt.Println("Removed.")
@@ -158,7 +162,7 @@ func runK8s(cleanup bool, serverID string, spec ports.WorkloadSpec) {
 	fmt.Printf("  NodeID     : %s\n", server.Labels.NodeID)
 	fmt.Printf("  ServerID   : %s\n", server.Labels.ServerID)
 
-	endpoint, err := adapter.Endpoint(ctx, serverID)
+	endpoint, err := adapter.Endpoint(ctx, spec.ProjectID, serverID)
 	if err != nil {
 		fmt.Printf("  Endpoint   : (could not resolve: %v)\n", err)
 	} else {

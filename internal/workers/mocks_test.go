@@ -26,15 +26,24 @@ func (m *mockRuntime) Start(ctx context.Context, spec ports.WorkloadSpec) (*port
 	return m.returnServer, m.returnErr
 }
 
-func (m *mockRuntime) Stop(ctx context.Context, workloadID string) error  { return m.stopErr }
-func (m *mockRuntime) Remove(ctx context.Context, workloadID string) error { return m.removeErr }
-func (m *mockRuntime) Status(ctx context.Context, workloadID string) (*ports.WorkloadHealth, error) {
+func (m *mockRuntime) EnsureProjectScope(ctx context.Context, projectID, projectSlug string) (*ports.ProjectScope, error) {
+	return &ports.ProjectScope{ProjectID: projectID, ProjectSlug: projectSlug, NetworkName: "mock-net"}, nil
+}
+func (m *mockRuntime) TeardownProjectScope(ctx context.Context, projectID string) error { return nil }
+
+func (m *mockRuntime) Stop(ctx context.Context, projectID, workloadID string) error {
+	return m.stopErr
+}
+func (m *mockRuntime) Remove(ctx context.Context, projectID, workloadID string) error {
+	return m.removeErr
+}
+func (m *mockRuntime) Status(ctx context.Context, projectID, workloadID string) (*ports.WorkloadHealth, error) {
 	return nil, nil
 }
-func (m *mockRuntime) Endpoint(ctx context.Context, workloadID string) (string, error) {
+func (m *mockRuntime) Endpoint(ctx context.Context, projectID, workloadID string) (string, error) {
 	return "", nil
 }
-func (m *mockRuntime) Logs(ctx context.Context, workloadID string, follow bool) (io.ReadCloser, error) {
+func (m *mockRuntime) Logs(ctx context.Context, projectID, workloadID string, follow bool) (io.ReadCloser, error) {
 	return nil, nil
 }
 

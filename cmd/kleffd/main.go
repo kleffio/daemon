@@ -10,7 +10,7 @@ import (
 
 	"github.com/kleffio/kleff-daemon/internal/adapters/out/db"
 	"github.com/kleffio/kleff-daemon/internal/adapters/out/observability/logging"
-	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
+	platformadapter "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	queueadapter "github.com/kleffio/kleff-daemon/internal/adapters/out/queue"
 	memrepo "github.com/kleffio/kleff-daemon/internal/adapters/out/repository/memory"
 	dockeradapter "github.com/kleffio/kleff-daemon/internal/adapters/out/runtime/docker"
@@ -66,16 +66,20 @@ func main() {
 	// --- Repository ---
 	repo := memrepo.NewServerRepository()
 
-	// --- Platform client ---
-	pc := platformclient.New(cfg.PlatformURL, cfg.SharedSecret)
+	// --- Platform registration + status reporting ---
+	platformClient := platformadapter.NewClient(cfg.PlatformURL, cfg.SharedSecret, cfg.NodeID, daemonLog)
+	if err := platformClient.RegisterNode(context.Background()); err != nil {
+		daemonLog.Error("Failed to register node with platform", err)
+		os.Exit(1)
+	}
 
 	// --- Dispatcher + workers ---
 	dispatcher := workers.NewDispatcher(q, 4)
-	dispatcher.Register(jobs.JobTypeServerProvision, workers.NewProvisionWorker(runtime, repo, daemonLog, pc).Handle)
-	dispatcher.Register(jobs.JobTypeServerStart, workers.NewStartWorker(runtime, repo, daemonLog, pc).Handle)
-	dispatcher.Register(jobs.JobTypeServerStop, workers.NewStopWorker(runtime, repo, daemonLog, pc).Handle)
-	dispatcher.Register(jobs.JobTypeServerDelete, workers.NewDeleteWorker(runtime, repo, daemonLog).Handle)
-	dispatcher.Register(jobs.JobTypeServerRestart, workers.NewRestartWorker(runtime, repo, daemonLog, pc).Handle)
+	dispatcher.Register(jobs.JobTypeServerProvision, workers.NewProvisionWorker(runtime, repo, daemonLog, platformClient).Handle)
+	dispatcher.Register(jobs.JobTypeServerStart, workers.NewStartWorker(runtime, repo, daemonLog, platformClient).Handle)
+	dispatcher.Register(jobs.JobTypeServerStop, workers.NewStopWorker(runtime, repo, daemonLog, platformClient).Handle)
+	dispatcher.Register(jobs.JobTypeServerDelete, workers.NewDeleteWorker(runtime, repo, daemonLog, platformClient).Handle)
+	dispatcher.Register(jobs.JobTypeServerRestart, workers.NewRestartWorker(runtime, repo, daemonLog, platformClient).Handle)
 
 	daemonLog.Info("Daemon started", "node_id", cfg.NodeID, "grpc_port", cfg.GRPCPort)
 

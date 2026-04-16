@@ -3,20 +3,25 @@ package workers
 import (
 	"context"
 	"fmt"
-	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
+	"strings"
+
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type StartWorker struct {
-	runtime        ports.RuntimeAdapter
-	repository     ports.ServerRepository
-	logger         ports.Logger
-	platformClient *platformclient.Client
+	runtime    ports.RuntimeAdapter
+	repository ports.ServerRepository
+	logger     ports.Logger
+	reporter   ports.WorkloadStatusReporter
 }
 
-func NewStartWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, platformClient *platformclient.Client) *StartWorker {
-	return &StartWorker{runtime: runtime, repository: repository, logger: logger, platformClient: platformClient}
+func NewStartWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, reporters ...ports.WorkloadStatusReporter) *StartWorker {
+	var reporter ports.WorkloadStatusReporter = ports.NoopWorkloadStatusReporter{}
+	if len(reporters) > 0 && reporters[0] != nil {
+		reporter = reporters[0]
+	}
+	return &StartWorker{runtime: runtime, repository: repository, logger: logger, reporter: reporter}
 }
 
 func (w *StartWorker) Handle(ctx context.Context, job *jobs.Job) error {
@@ -27,11 +32,29 @@ func (w *StartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
+	if spec.ProjectID == "" {
+		return fmt.Errorf("invalid payload: project_id is required")
+	}
+
+	report := func(status, runtimeRef, endpoint, errMsg string) {
+		if err := w.reporter.ReportStatus(ctx, ports.WorkloadStatusUpdate{
+			WorkloadID:   spec.ServerID,
+			ProjectID:    spec.ProjectID,
+			Status:       status,
+			RuntimeRef:   runtimeRef,
+			Endpoint:     endpoint,
+			ErrorMessage: errMsg,
+		}); err != nil {
+			log.Warn("Failed to report workload status", "workload_id", spec.ServerID, "error", err)
+		}
+	}
+
 	log.Info("Starting server", ports.LogKeyServerID, spec.ServerID)
 
 	server, err := w.runtime.Start(ctx, spec)
 	if err != nil {
 		log.Error("Failed to start server", err)
+		report("failed", "", "", err.Error())
 		return fmt.Errorf("start failed: %w", err)
 	}
 
@@ -39,25 +62,11 @@ func (w *StartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		log.Warn("Failed to update server status after start", "server_id", spec.ServerID)
 	}
 
-	primaryPort := 0
-	if len(spec.PortRequirements) > 0 {
-		primaryPort = spec.PortRequirements[0].TargetPort
+	endpoint, epErr := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID)
+	if epErr != nil {
+		log.Warn("Failed to resolve endpoint after start", "workload_id", spec.ServerID, "error", epErr)
 	}
-	if address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort); err != nil {
-		log.Error("Failed to get endpoint after start — reporting succeeded without address", err)
-		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-			log.Error("Failed to report status to platform", err)
-		}
-	} else {
-		if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
-			log.Error("Failed to report address to platform after start — falling back to status-only update", err)
-			if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-				log.Error("Failed to report succeeded status to platform", err)
-			}
-		} else {
-			log.Info("Address reported to platform after start", ports.LogKeyServerID, spec.ServerID, "address", address)
-		}
-	}
+	report(strings.ToLower(server.State), server.RuntimeRef, endpoint, "")
 
 	log.Info("Server started successfully", ports.LogKeyServerID, spec.ServerID)
 	return nil
