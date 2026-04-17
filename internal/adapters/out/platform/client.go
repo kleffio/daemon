@@ -5,72 +5,125 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
+	"time"
+
+	"github.com/kleffio/kleff-daemon/internal/application/ports"
 )
 
-// Client reports server state back to the platform control-plane.
 type Client struct {
-	baseURL string
-	secret  string
-	http    *http.Client
+	baseURL      string
+	bootstrapKey string
+	nodeID       string
+	nodeToken    string
+	httpClient   *http.Client
+	logger       ports.Logger
 }
 
-func New(baseURL, secret string) *Client {
+func NewClient(baseURL, bootstrapKey, nodeID string, logger ports.Logger) *Client {
 	return &Client{
-		baseURL: baseURL,
-		secret:  secret,
-		http:    &http.Client{},
+		baseURL:      normalizeBaseURL(baseURL),
+		bootstrapKey: bootstrapKey,
+		nodeID:       nodeID,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+		logger: logger,
 	}
 }
 
-// ReportStatus tells the platform the current status of serverID (e.g. "rolled_back", "succeeded").
-func (c *Client) ReportStatus(ctx context.Context, serverID, status string) error {
-	body, _ := json.Marshal(map[string]string{"status": status})
+func normalizeBaseURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/api/v1")
+	return baseURL
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/internal/deployments/%s/status", c.baseURL, serverID),
-		bytes.NewReader(body),
-	)
+func (c *Client) RegisterNode(ctx context.Context) error {
+	if c.baseURL == "" {
+		return fmt.Errorf("platform base url is required")
+	}
+	if c.bootstrapKey == "" {
+		return fmt.Errorf("platform shared secret is required")
+	}
+	payload := map[string]any{
+		"node_id":    c.nodeID,
+		"hostname":   c.nodeID,
+		"region":     "local",
+		"ip_address": "",
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return fmt.Errorf("marshal node registration payload: %w", err)
+	}
+	url := c.baseURL + "/api/v1/nodes"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build node registration request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.secret)
+	req.Header.Set("Authorization", "Bearer "+c.bootstrapKey)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("report status: %w", err)
+		return fmt.Errorf("register node request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("report status: unexpected status %d", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return fmt.Errorf("register node failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
+	var out struct {
+		NodeID    string `json:"node_id"`
+		NodeToken string `json:"node_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("decode node registration response: %w", err)
+	}
+	if out.NodeToken == "" {
+		return fmt.Errorf("node registration response missing node_token")
+	}
+	c.nodeToken = out.NodeToken
+	if out.NodeID != "" {
+		c.nodeID = out.NodeID
+	}
+	c.logger.Info("Registered node with platform", ports.LogKeyNodeID, c.nodeID)
 	return nil
 }
 
-// ReportAddress tells the platform the host:port address for serverID.
-func (c *Client) ReportAddress(ctx context.Context, serverID, address string) error {
-	body, _ := json.Marshal(map[string]string{"address": address})
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/internal/deployments/%s/address", c.baseURL, serverID),
-		bytes.NewReader(body),
-	)
+func (c *Client) ReportStatus(ctx context.Context, update ports.WorkloadStatusUpdate) error {
+	if c.nodeToken == "" {
+		return fmt.Errorf("node token is not set; call RegisterNode first")
+	}
+	payload := map[string]any{
+		"status":        update.Status,
+		"runtime_ref":   update.RuntimeRef,
+		"endpoint":      update.Endpoint,
+		"node_id":       update.NodeID,
+		"error_message": update.ErrorMessage,
+		"observed_at":   time.Now().UTC().Format(time.RFC3339),
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return fmt.Errorf("marshal status payload: %w", err)
+	}
+	url := fmt.Sprintf("%s/api/v1/internal/workloads/%s/status", c.baseURL, update.WorkloadID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build status callback request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.secret)
+	req.Header.Set("Authorization", "Bearer "+c.nodeToken)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("report address: %w", err)
+		return fmt.Errorf("status callback request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("report address: unexpected status %d", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return fmt.Errorf("status callback failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return nil
 }

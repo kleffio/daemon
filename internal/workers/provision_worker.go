@@ -5,20 +5,23 @@ import (
 	"fmt"
 	"strings"
 
-	platformclient "github.com/kleffio/kleff-daemon/internal/adapters/out/platform"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 )
 
 type ProvisionWorker struct {
-	runtime        ports.RuntimeAdapter
-	repository     ports.ServerRepository
-	logger         ports.Logger
-	platformClient *platformclient.Client
+	runtime    ports.RuntimeAdapter
+	repository ports.ServerRepository
+	logger     ports.Logger
+	reporter   ports.WorkloadStatusReporter
 }
 
-func NewProvisionWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, platformClient *platformclient.Client) *ProvisionWorker {
-	return &ProvisionWorker{runtime: runtime, repository: repository, logger: logger, platformClient: platformClient}
+func NewProvisionWorker(runtime ports.RuntimeAdapter, repository ports.ServerRepository, logger ports.Logger, reporters ...ports.WorkloadStatusReporter) *ProvisionWorker {
+	var reporter ports.WorkloadStatusReporter = ports.NoopWorkloadStatusReporter{}
+	if len(reporters) > 0 && reporters[0] != nil {
+		reporter = reporters[0]
+	}
+	return &ProvisionWorker{runtime: runtime, repository: repository, logger: logger, reporter: reporter}
 }
 
 func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
@@ -29,14 +32,29 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		return fmt.Errorf("invalid payload: %w", err)
 	}
 
+	if spec.ProjectID == "" {
+		return fmt.Errorf("invalid payload: project_id is required")
+	}
+
+	report := func(status, runtimeRef, endpoint, errMsg string) {
+		if err := w.reporter.ReportStatus(ctx, ports.WorkloadStatusUpdate{
+			WorkloadID:   spec.ServerID,
+			ProjectID:    spec.ProjectID,
+			Status:       status,
+			RuntimeRef:   runtimeRef,
+			Endpoint:     endpoint,
+			ErrorMessage: errMsg,
+		}); err != nil {
+			log.Warn("Failed to report workload status", "workload_id", spec.ServerID, "error", err)
+		}
+	}
+
 	log.Info("Provisioning server", ports.LogKeyServerID, spec.ServerID)
 
 	server, err := w.runtime.Deploy(ctx, spec)
 	if err != nil {
 		log.Error("Failed to provision server", err)
-		if strings.Contains(err.Error(), "Invalid container name") {
-			return fmt.Errorf("provision failed (bad name): %w: %w", err, ports.ErrPermanent)
-		}
+		report("failed", "", "", err.Error())
 		return fmt.Errorf("provision failed: %w", err)
 	}
 
@@ -50,35 +68,16 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 
 	if err := w.repository.Save(ctx, record); err != nil {
 		log.Error("Failed to store server record", err)
+		report("failed", server.RuntimeRef, "", err.Error())
 		return fmt.Errorf("failed to store runtime reference: %w", err)
 	}
 
+	endpoint, epErr := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID)
+	if epErr != nil {
+		log.Warn("Failed to resolve endpoint after provision", "workload_id", spec.ServerID, "error", epErr)
+	}
+	report(strings.ToLower(server.State), server.RuntimeRef, endpoint, "")
+
 	log.Info("Server provisioned successfully", ports.LogKeyServerID, record.ID, "runtime_ref", record.RuntimeRef)
-
-	if w.platformClient == nil {
-		return nil
-	}
-
-	// Always mark the deployment as succeeded — the server is running.
-	// Attempt to get the address too; if that fails the status still updates.
-	address, err := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID)
-	if err != nil {
-		log.Error("Failed to get server endpoint — reporting succeeded without address", err)
-		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-			log.Error("Failed to report succeeded status to platform", err)
-		}
-		return nil
-	}
-
-	// ReportAddress updates both the address and status to succeeded in one call.
-	if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
-		log.Error("Failed to report address to platform — falling back to status-only update", err)
-		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-			log.Error("Failed to report succeeded status to platform", err)
-		}
-	} else {
-		log.Info("Address reported to platform", ports.LogKeyServerID, spec.ServerID, "address", address)
-	}
-
 	return nil
 }

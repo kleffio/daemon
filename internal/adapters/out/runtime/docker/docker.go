@@ -362,6 +362,7 @@ func (a *Adapter) imageExistsLocally(ctx context.Context, imageName string) bool
 	return false
 }
 
+
 // findContainer looks up a container by workload id and verifies that its
 // project label matches the expected project. Returns ErrProjectMismatch if a
 // container with the id exists but belongs to a different project — callers

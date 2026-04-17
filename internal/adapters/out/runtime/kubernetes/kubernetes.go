@@ -106,19 +106,22 @@ func (a *Adapter) Start(ctx context.Context, spec ports.WorkloadSpec) (*ports.Ru
 	}
 }
 
-// EnsureProjectScope is a no-op for Kubernetes — namespacing is handled at the cluster level.
+// EnsureProjectScope is a no-op on Kubernetes for now. Project isolation will
+// be implemented via a per-project namespace once the platform module lands.
 func (a *Adapter) EnsureProjectScope(_ context.Context, projectID, projectSlug string) (*ports.ProjectScope, error) {
-	return &ports.ProjectScope{ProjectID: projectID, ProjectSlug: projectSlug, NetworkName: a.namespace}, nil
+	return &ports.ProjectScope{
+		ProjectID:   projectID,
+		ProjectSlug: projectSlug,
+		NetworkName: a.namespace,
+	}, nil
 }
 
-// TeardownProjectScope is a no-op for Kubernetes.
-func (a *Adapter) TeardownProjectScope(_ context.Context, _ string) error {
-	return nil
-}
+// TeardownProjectScope is a no-op on Kubernetes for now.
+func (a *Adapter) TeardownProjectScope(_ context.Context, _ string) error { return nil }
 
 // Stop suspends a workload without removing it.
-func (a *Adapter) Stop(ctx context.Context, _ string, workloadID string) error {
-	strategy, err := a.strategyFor(ctx, workloadID)
+func (a *Adapter) Stop(ctx context.Context, projectID, workloadID string) error {
+	strategy, err := a.strategyFor(ctx, projectID, workloadID)
 	if err != nil {
 		return err
 	}
@@ -135,8 +138,8 @@ func (a *Adapter) Stop(ctx context.Context, _ string, workloadID string) error {
 }
 
 // Remove permanently deletes a workload and all associated resources.
-func (a *Adapter) Remove(ctx context.Context, _ string, workloadID string) error {
-	strategy, err := a.strategyFor(ctx, workloadID)
+func (a *Adapter) Remove(ctx context.Context, projectID, workloadID string) error {
+	strategy, err := a.strategyFor(ctx, projectID, workloadID)
 	if err != nil {
 		return err
 	}
@@ -151,8 +154,8 @@ func (a *Adapter) Remove(ctx context.Context, _ string, workloadID string) error
 }
 
 // Status returns the current state of a workload.
-func (a *Adapter) Status(ctx context.Context, _ string, workloadID string) (*ports.WorkloadHealth, error) {
-	strategy, err := a.strategyFor(ctx, workloadID)
+func (a *Adapter) Status(ctx context.Context, projectID, workloadID string) (*ports.WorkloadHealth, error) {
+	strategy, err := a.strategyFor(ctx, projectID, workloadID)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +173,8 @@ func (a *Adapter) Status(ctx context.Context, _ string, workloadID string) (*por
 }
 
 // Endpoint returns the address users connect to.
-func (a *Adapter) Endpoint(ctx context.Context, _ string, workloadID string) (string, error) {
-	strategy, err := a.strategyFor(ctx, workloadID)
+func (a *Adapter) Endpoint(ctx context.Context, projectID, workloadID string) (string, error) {
+	strategy, err := a.strategyFor(ctx, projectID, workloadID)
 	if err != nil {
 		return "", err
 	}
@@ -201,7 +204,7 @@ func (a *Adapter) Endpoint(ctx context.Context, _ string, workloadID string) (st
 }
 
 // Logs is not yet implemented for Kubernetes.
-func (a *Adapter) Logs(_ context.Context, _, _ string, _ bool) (io.ReadCloser, error) {
+func (a *Adapter) Logs(_ context.Context, _ string, _ string, _ bool) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(nil)), nil
 }
 
@@ -213,6 +216,8 @@ func (a *Adapter) deployAgones(ctx context.Context, spec ports.WorkloadSpec) (*p
 		ServerID:    spec.ServerID,
 		BlueprintID: spec.BlueprintID,
 		NodeID:      a.nodeID,
+		ProjectID:   spec.ProjectID,
+		ProjectSlug: spec.ProjectSlug,
 	}
 
 	labelMap := serverLabels.ToMap()
@@ -301,9 +306,12 @@ func (a *Adapter) waitForAgonesReady(ctx context.Context, name string, serverLab
 
 func (a *Adapter) deployStatefulSet(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
 	serverLabels := labels.WorkloadLabels{
-		OwnerID: spec.OwnerID, ServerID: spec.ServerID, BlueprintID: spec.BlueprintID, NodeID: a.nodeID,
+		OwnerID: spec.OwnerID, ServerID: spec.ServerID, BlueprintID: spec.BlueprintID, NodeID: a.nodeID, ProjectID: spec.ProjectID, ProjectSlug: spec.ProjectSlug,
 	}
-	selectorLabels := map[string]string{"app": spec.ServerID, labelStrategy: "statefulset"}
+	selectorLabels := map[string]string{"app": spec.ServerID, labelStrategy: "statefulset", labels.ProjectID: spec.ProjectID}
+	if spec.ProjectSlug != "" {
+		selectorLabels[labels.ProjectSlug] = spec.ProjectSlug
+	}
 
 	replicas := int32(1)
 	sts := buildStatefulSet(spec, replicas, selectorLabels)
@@ -340,9 +348,12 @@ func (a *Adapter) scaleStatefulSet(ctx context.Context, workloadID string, repli
 
 func (a *Adapter) deployDeployment(ctx context.Context, spec ports.WorkloadSpec) (*ports.RunningServer, error) {
 	serverLabels := labels.WorkloadLabels{
-		OwnerID: spec.OwnerID, ServerID: spec.ServerID, BlueprintID: spec.BlueprintID, NodeID: a.nodeID,
+		OwnerID: spec.OwnerID, ServerID: spec.ServerID, BlueprintID: spec.BlueprintID, NodeID: a.nodeID, ProjectID: spec.ProjectID, ProjectSlug: spec.ProjectSlug,
 	}
-	selectorLabels := map[string]string{"app": spec.ServerID, labelStrategy: "deployment"}
+	selectorLabels := map[string]string{"app": spec.ServerID, labelStrategy: "deployment", labels.ProjectID: spec.ProjectID}
+	if spec.ProjectSlug != "" {
+		selectorLabels[labels.ProjectSlug] = spec.ProjectSlug
+	}
 
 	replicas := int32(1)
 	deploy := buildDeployment(spec, replicas, selectorLabels)
@@ -378,24 +389,44 @@ func (a *Adapter) scaleDeployment(ctx context.Context, workloadID string, replic
 // --- Helpers ---
 
 // strategyFor looks up the runtime strategy label on the live resource.
-func (a *Adapter) strategyFor(ctx context.Context, workloadID string) (string, error) {
+func (a *Adapter) strategyFor(ctx context.Context, projectID, workloadID string) (string, error) {
 	// Try Agones GameServer first.
 	gs, err := a.dynamic.Resource(gameServerGVR).Namespace(a.namespace).Get(ctx, workloadID, metav1.GetOptions{})
 	if err == nil {
 		lbls, _, _ := unstructured.NestedStringMap(gs.Object, "metadata", "labels")
+		if err := ensureProjectMatch(projectID, lbls, workloadID); err != nil {
+			return "", err
+		}
 		return lbls[labelStrategy], nil
 	}
 	// Try StatefulSet.
 	sts, err := a.typed.AppsV1().StatefulSets(a.namespace).Get(ctx, workloadID, metav1.GetOptions{})
 	if err == nil {
+		if err := ensureProjectMatch(projectID, sts.Labels, workloadID); err != nil {
+			return "", err
+		}
 		return sts.Labels[labelStrategy], nil
 	}
 	// Try Deployment.
 	deploy, err := a.typed.AppsV1().Deployments(a.namespace).Get(ctx, workloadID, metav1.GetOptions{})
 	if err == nil {
+		if err := ensureProjectMatch(projectID, deploy.Labels, workloadID); err != nil {
+			return "", err
+		}
 		return deploy.Labels[labelStrategy], nil
 	}
 	return "", fmt.Errorf("workload %q not found in any strategy", workloadID)
+}
+
+func ensureProjectMatch(projectID string, resourceLabels map[string]string, workloadID string) error {
+	if projectID == "" {
+		return nil
+	}
+	got := strings.TrimSpace(resourceLabels[labels.ProjectID])
+	if got == projectID {
+		return nil
+	}
+	return fmt.Errorf("%w: workload %s belongs to project %q, not %q", ports.ErrProjectMismatch, workloadID, got, projectID)
 }
 
 func buildEnvList(overrides map[string]string) []interface{} {

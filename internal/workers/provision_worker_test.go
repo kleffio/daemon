@@ -32,6 +32,7 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 		OwnerID:     "owner-1",
 		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
+		ProjectID:   "proj-1",
 		Image:       "itzg/minecraft-server:latest",
 		EnvOverrides: map[string]string{
 			"TYPE":    "PAPER",
@@ -69,6 +70,7 @@ func TestProvisionWorkerHandleRuntimeFailure(t *testing.T) {
 		OwnerID:     "owner-1",
 		ServerID:    "test-server",
 		BlueprintID: "blueprint-1",
+		ProjectID:   "proj-1",
 		Image:       "itzg/minecraft-server:latest",
 	}
 
