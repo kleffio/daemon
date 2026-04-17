@@ -82,6 +82,32 @@ func (a *Adapter) EnsureProjectScope(ctx context.Context, projectID, projectSlug
 	}); err != nil {
 		// Tolerate race where another worker created it concurrently.
 		if !strings.Contains(err.Error(), "already exists") {
+			if isAddressPoolExhaustedError(err) {
+				// Best effort cleanup for stale project networks from previous runs.
+				_, _ = a.pruneUnusedProjectNetworks(ctx)
+
+				if _, retryErr := a.client.NetworkCreate(ctx, name, dnet.CreateOptions{
+					Driver: "bridge",
+					Labels: netLabels,
+				}); retryErr == nil || strings.Contains(retryErr.Error(), "already exists") {
+					return &ports.ProjectScope{
+						ProjectID:   projectID,
+						ProjectSlug: projectSlug,
+						NetworkName: name,
+					}, nil
+				}
+
+				// Final fallback for local/dev environments where Docker exhausted
+				// bridge subnets. This keeps provisioning functional.
+				if _, inspectErr := a.client.NetworkInspect(ctx, "bridge", dnet.InspectOptions{}); inspectErr == nil {
+					return &ports.ProjectScope{
+						ProjectID:   projectID,
+						ProjectSlug: projectSlug,
+						NetworkName: "bridge",
+					}, nil
+				}
+			}
+
 			return nil, fmt.Errorf("failed to create project network: %w", err)
 		}
 	}
@@ -91,6 +117,45 @@ func (a *Adapter) EnsureProjectScope(ctx context.Context, projectID, projectSlug
 		ProjectSlug: projectSlug,
 		NetworkName: name,
 	}, nil
+}
+
+func isAddressPoolExhaustedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "all predefined address pools have been fully subnetted") ||
+		strings.Contains(lower, "non-overlapping ipv4 address pool")
+}
+
+func (a *Adapter) pruneUnusedProjectNetworks(ctx context.Context) (int, error) {
+	nets, err := a.client.NetworkList(ctx, dnet.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", labels.ManagedBy+"="+labels.ManagedByValue)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to list managed networks: %w", err)
+	}
+
+	removed := 0
+	for _, n := range nets {
+		if !strings.HasPrefix(n.Name, "kleff_proj_") {
+			continue
+		}
+
+		inspect, inspectErr := a.client.NetworkInspect(ctx, n.ID, dnet.InspectOptions{})
+		if inspectErr != nil {
+			continue
+		}
+		if len(inspect.Containers) > 0 {
+			continue
+		}
+
+		if removeErr := a.client.NetworkRemove(ctx, n.ID); removeErr == nil {
+			removed++
+		}
+	}
+
+	return removed, nil
 }
 
 // TeardownProjectScope removes the per-project network. Caller is responsible
