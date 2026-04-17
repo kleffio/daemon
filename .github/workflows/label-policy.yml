@@ -46,7 +46,7 @@ jobs:
         with:
           script: |
             const required = [
-              'feature', 'bugfix', 'chore', 'docs',
+              'feature', 'enhancement', 'bugfix', 'chore', 'docs',
               'refactor', 'security', 'tests'
             ];
             const labels = await github.paginate(
