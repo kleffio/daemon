@@ -124,16 +124,22 @@ func (a *Adapter) Deploy(ctx context.Context, spec ports.WorkloadSpec) (*ports.R
 		return nil, err
 	}
 
-	// Pull image and wait for completion.
-	rc, err := a.client.ImagePull(ctx, spec.Image, image.PullOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to pull image %s: %w", spec.Image, err)
-	}
-	if _, err := io.Copy(io.Discard, rc); err != nil {
+	// Pull image. If the registry is unreachable or denies access, fall back to
+	// whatever is already present in the local Docker image cache so that locally
+	// built images (e.g. during development) work without a live registry.
+	rc, pullErr := a.client.ImagePull(ctx, spec.Image, image.PullOptions{})
+	if pullErr != nil {
+		if !a.imageExistsLocally(ctx, spec.Image) {
+			return nil, fmt.Errorf("failed to pull image %s: %w", spec.Image, pullErr)
+		}
+		// Image is available locally — proceed without a fresh pull.
+	} else {
+		if _, err := io.Copy(io.Discard, rc); err != nil {
+			rc.Close()
+			return nil, fmt.Errorf("failed to pull image %s: %w", spec.Image, err)
+		}
 		rc.Close()
-		return nil, fmt.Errorf("failed to pull image %s: %w", spec.Image, err)
 	}
-	rc.Close()
 
 	containerID, err := a.createContainer(ctx, spec, scope)
 	if err != nil {
@@ -313,13 +319,18 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, 
 		},
 	}
 
+	containerConfig := &container.Config{
+		Image:        spec.Image,
+		Env:          env,
+		ExposedPorts: exposedPorts,
+		Labels:       containerLabels,
+	}
+	if spec.Command != "" {
+		containerConfig.Cmd = []string{"sh", "-c", spec.Command}
+	}
+
 	resp, err := a.client.ContainerCreate(ctx,
-		&container.Config{
-			Image:        spec.Image,
-			Env:          env,
-			ExposedPorts: exposedPorts,
-			Labels:       containerLabels,
-		},
+		containerConfig,
 		&container.HostConfig{
 			PortBindings: portBindings,
 			Resources:    resources,
@@ -334,6 +345,23 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, 
 	}
 	return resp.ID, nil
 }
+
+// imageExistsLocally returns true if the image is already present in the local Docker cache.
+func (a *Adapter) imageExistsLocally(ctx context.Context, imageName string) bool {
+	images, err := a.client.ImageList(ctx, image.ListOptions{})
+	if err != nil {
+		return false
+	}
+	for _, img := range images {
+		for _, tag := range img.RepoTags {
+			if tag == imageName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 
 // findContainer looks up a container by workload id and verifies that its
 // project label matches the expected project. Returns ErrProjectMismatch if a

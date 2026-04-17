@@ -26,7 +26,7 @@ func TestRestartWorkerHandleSuccess(t *testing.T) {
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewRestartWorker(runtime, repo, logger)
+	worker := workers.NewRestartWorker(runtime, repo, logger, nil)
 
 	spec := ports.WorkloadSpec{
 		OwnerID:   "owner-1",
@@ -52,7 +52,7 @@ func TestRestartWorkerStopFailure(t *testing.T) {
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewRestartWorker(runtime, repo, logger)
+	worker := workers.NewRestartWorker(runtime, repo, logger, nil)
 
 	spec := ports.WorkloadSpec{
 		OwnerID:   "owner-1",
@@ -74,7 +74,7 @@ func TestRestartWorkerStartFailure(t *testing.T) {
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewRestartWorker(runtime, repo, logger)
+	worker := workers.NewRestartWorker(runtime, repo, logger, nil)
 
 	spec := ports.WorkloadSpec{
 		OwnerID:   "owner-1",
