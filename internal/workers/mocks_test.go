@@ -26,15 +26,19 @@ func (m *mockRuntime) Start(ctx context.Context, spec ports.WorkloadSpec) (*port
 	return m.returnServer, m.returnErr
 }
 
-func (m *mockRuntime) Stop(ctx context.Context, workloadID string) error  { return m.stopErr }
-func (m *mockRuntime) Remove(ctx context.Context, workloadID string) error { return m.removeErr }
-func (m *mockRuntime) Status(ctx context.Context, workloadID string) (*ports.WorkloadHealth, error) {
+func (m *mockRuntime) EnsureProjectScope(_ context.Context, projectID, projectSlug string) (*ports.ProjectScope, error) {
+	return &ports.ProjectScope{ProjectID: projectID, ProjectSlug: projectSlug}, nil
+}
+func (m *mockRuntime) TeardownProjectScope(_ context.Context, _ string) error { return nil }
+func (m *mockRuntime) Stop(_ context.Context, _, _ string) error               { return m.stopErr }
+func (m *mockRuntime) Remove(_ context.Context, _, _ string) error             { return m.removeErr }
+func (m *mockRuntime) Status(_ context.Context, _, workloadID string) (*ports.WorkloadHealth, error) {
 	return nil, nil
 }
-func (m *mockRuntime) Endpoint(ctx context.Context, workloadID string) (string, error) {
+func (m *mockRuntime) Endpoint(_ context.Context, _, _ string) (string, error) {
 	return "", nil
 }
-func (m *mockRuntime) Logs(ctx context.Context, workloadID string, follow bool) (io.ReadCloser, error) {
+func (m *mockRuntime) Logs(_ context.Context, _, _ string, _ bool) (io.ReadCloser, error) {
 	return nil, nil
 }
 

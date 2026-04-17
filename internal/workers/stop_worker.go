@@ -30,7 +30,7 @@ func (w *StopWorker) Handle(ctx context.Context, job *jobs.Job) error {
 
 	log.Info("Stopping server", ports.LogKeyServerID, spec.ServerID)
 
-	if err := w.runtime.Stop(ctx, spec.ServerID); err != nil {
+	if err := w.runtime.Stop(ctx, spec.ProjectID, spec.ServerID); err != nil {
 		log.Error("Failed to stop server", err)
 		return fmt.Errorf("stop failed: %w", err)
 	}
@@ -39,8 +39,10 @@ func (w *StopWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		log.Warn("Failed to update server status after stop", "server_id", spec.ServerID)
 	}
 
-	if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "rolled_back"); err != nil {
-		log.Error("Failed to report status to platform", err)
+	if w.platformClient != nil {
+		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "rolled_back"); err != nil {
+			log.Error("Failed to report status to platform", err)
+		}
 	}
 
 	log.Info("Server stopped successfully", ports.LogKeyServerID, spec.ServerID)

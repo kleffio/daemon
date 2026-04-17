@@ -55,13 +55,13 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 
 	log.Info("Server provisioned successfully", ports.LogKeyServerID, record.ID, "runtime_ref", record.RuntimeRef)
 
+	if w.platformClient == nil {
+		return nil
+	}
+
 	// Always mark the deployment as succeeded — the server is running.
 	// Attempt to get the address too; if that fails the status still updates.
-	primaryPort := 0
-	if len(spec.PortRequirements) > 0 {
-		primaryPort = spec.PortRequirements[0].TargetPort
-	}
-	address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort)
+	address, err := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID)
 	if err != nil {
 		log.Error("Failed to get server endpoint — reporting succeeded without address", err)
 		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {

@@ -16,7 +16,8 @@ type WorkloadSpec struct {
 	OwnerID     string `json:"owner_id"`
 	ServerID    string `json:"server_id"`
 	BlueprintID string `json:"blueprint_id"`
-	ProjectID   string `json:"project_id,omitempty"`
+	ProjectID   string `json:"project_id"`
+	ProjectSlug string `json:"project_slug"`
 
 	// Blueprint details required for provision/start
 	Image            string            `json:"image"`

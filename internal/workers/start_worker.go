@@ -39,23 +39,21 @@ func (w *StartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		log.Warn("Failed to update server status after start", "server_id", spec.ServerID)
 	}
 
-	primaryPort := 0
-	if len(spec.PortRequirements) > 0 {
-		primaryPort = spec.PortRequirements[0].TargetPort
-	}
-	if address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort); err != nil {
-		log.Error("Failed to get endpoint after start — reporting succeeded without address", err)
-		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-			log.Error("Failed to report status to platform", err)
-		}
-	} else {
-		if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
-			log.Error("Failed to report address to platform after start — falling back to status-only update", err)
+	if w.platformClient != nil {
+		if address, err := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID); err != nil {
+			log.Error("Failed to get endpoint after start — reporting succeeded without address", err)
 			if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-				log.Error("Failed to report succeeded status to platform", err)
+				log.Error("Failed to report status to platform", err)
 			}
 		} else {
-			log.Info("Address reported to platform after start", ports.LogKeyServerID, spec.ServerID, "address", address)
+			if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
+				log.Error("Failed to report address to platform after start — falling back to status-only update", err)
+				if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
+					log.Error("Failed to report succeeded status to platform", err)
+				}
+			} else {
+				log.Info("Address reported to platform after start", ports.LogKeyServerID, spec.ServerID, "address", address)
+			}
 		}
 	}
 

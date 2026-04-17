@@ -26,7 +26,7 @@ func TestProvisionWorkerHandleSuccess(t *testing.T) {
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewProvisionWorker(runtime, repo, logger)
+	worker := workers.NewProvisionWorker(runtime, repo, logger, nil)
 
 	spec := ports.WorkloadSpec{
 		OwnerID:     "owner-1",
@@ -63,7 +63,7 @@ func TestProvisionWorkerHandleRuntimeFailure(t *testing.T) {
 	repo := &mockRepository{}
 	logger := logging.NewNoopLogger()
 
-	worker := workers.NewProvisionWorker(runtime, repo, logger)
+	worker := workers.NewProvisionWorker(runtime, repo, logger, nil)
 
 	spec := ports.WorkloadSpec{
 		OwnerID:     "owner-1",

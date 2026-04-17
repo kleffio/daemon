@@ -30,11 +30,13 @@ func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	log.Info("Restarting server", ports.LogKeyServerID, spec.ServerID)
 
 	// Tell the platform we're restarting so the UI can show it.
-	if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "restarting"); err != nil {
-		log.Error("Failed to report restarting status to platform", err)
+	if w.platformClient != nil {
+		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "restarting"); err != nil {
+			log.Error("Failed to report restarting status to platform", err)
+		}
 	}
 
-	if err := w.runtime.Stop(ctx, spec.ServerID); err != nil {
+	if err := w.runtime.Stop(ctx, spec.ProjectID, spec.ServerID); err != nil {
 		log.Error("Failed to stop server during restart", err)
 		return fmt.Errorf("restart failed on stop: %w", err)
 	}
@@ -50,23 +52,21 @@ func (w *RestartWorker) Handle(ctx context.Context, job *jobs.Job) error {
 	}
 
 	// Docker assigns a new random port on each start — report the updated address.
-	primaryPort := 0
-	if len(spec.PortRequirements) > 0 {
-		primaryPort = spec.PortRequirements[0].TargetPort
-	}
-	if address, err := w.runtime.Endpoint(ctx, spec.ServerID, primaryPort); err != nil {
-		log.Error("Failed to get endpoint after restart", err)
-		if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-			log.Error("Failed to report status to platform", err)
-		}
-	} else {
-		if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
-			log.Error("Failed to report address to platform after restart — falling back to status-only update", err)
+	if w.platformClient != nil {
+		if address, err := w.runtime.Endpoint(ctx, spec.ProjectID, spec.ServerID); err != nil {
+			log.Error("Failed to get endpoint after restart", err)
 			if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
-				log.Error("Failed to report succeeded status to platform", err)
+				log.Error("Failed to report status to platform", err)
 			}
 		} else {
-			log.Info("Address reported to platform after restart", ports.LogKeyServerID, spec.ServerID, "address", address)
+			if err := w.platformClient.ReportAddress(ctx, spec.ServerID, address); err != nil {
+				log.Error("Failed to report address to platform after restart — falling back to status-only update", err)
+				if err := w.platformClient.ReportStatus(ctx, spec.ServerID, "succeeded"); err != nil {
+					log.Error("Failed to report succeeded status to platform", err)
+				}
+			} else {
+				log.Info("Address reported to platform after restart", ports.LogKeyServerID, spec.ServerID, "address", address)
+			}
 		}
 	}
 
