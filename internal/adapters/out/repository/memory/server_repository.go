@@ -46,3 +46,13 @@ func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status s
 	s.Status = status
 	return nil
 }
+
+func (r *ServerRepository) ListAll(ctx context.Context) ([]*ports.ServerRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*ports.ServerRecord, 0, len(r.servers))
+	for _, s := range r.servers {
+		out = append(out, s)
+	}
+	return out, nil
+}

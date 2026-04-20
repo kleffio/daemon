@@ -2,9 +2,11 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -280,7 +282,7 @@ func (a *Adapter) Remove(ctx context.Context, projectID, workloadID string) erro
 	return nil
 }
 
-// Status returns the current state of the container.
+// Status returns the current state and resource metrics of the container.
 func (a *Adapter) Status(ctx context.Context, projectID, workloadID string) (*ports.WorkloadHealth, error) {
 	containerID, err := a.findContainer(ctx, projectID, workloadID)
 	if err != nil {
@@ -290,8 +292,71 @@ func (a *Adapter) Status(ctx context.Context, projectID, workloadID string) (*po
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
-	state := strings.ToLower(info.State.Status)
-	return &ports.WorkloadHealth{WorkloadID: workloadID, State: state}, nil
+	health := &ports.WorkloadHealth{
+		WorkloadID: workloadID,
+		State:      strings.ToLower(info.State.Status),
+	}
+	if info.State.Running {
+		if err := a.collectStats(ctx, containerID, health); err != nil {
+			// Non-fatal: state is already populated; metrics will be zero.
+			_ = err
+		}
+	}
+	return health, nil
+}
+
+func (a *Adapter) collectStats(ctx context.Context, containerID string, h *ports.WorkloadHealth) error {
+	resp, err := a.client.ContainerStats(ctx, containerID, false)
+	if err != nil {
+		return fmt.Errorf("container stats: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var stats container.StatsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return fmt.Errorf("decode stats: %w", err)
+	}
+
+	// CPU: delta-based percentage converted to millicores.
+	cpuDelta := stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage
+	sysDelta := stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage
+	numCPUs := uint64(stats.CPUStats.OnlineCPUs)
+	if numCPUs == 0 {
+		numCPUs = uint64(len(stats.CPUStats.CPUUsage.PercpuUsage))
+	}
+	if numCPUs == 0 {
+		numCPUs = 1
+	}
+	if sysDelta > 0 && cpuDelta > 0 {
+		h.CPUMillicores = int64((float64(cpuDelta) / float64(sysDelta)) * float64(numCPUs) * 1000)
+	}
+
+	// Memory.
+	h.MemoryMB = int64(stats.MemoryStats.Usage / (1024 * 1024))
+
+	// Network: sum all interfaces.
+	var rxBytes, txBytes uint64
+	for _, iface := range stats.Networks {
+		rxBytes += iface.RxBytes
+		txBytes += iface.TxBytes
+	}
+	h.NetworkRxMB = float64(rxBytes) / (1024 * 1024)
+	h.NetworkTxMB = float64(txBytes) / (1024 * 1024)
+
+	// Disk I/O.
+	var diskRead, diskWrite uint64
+	for _, entry := range stats.BlkioStats.IoServiceBytesRecursive {
+		switch strings.ToLower(entry.Op) {
+		case "read":
+			diskRead += entry.Value
+		case "write":
+			diskWrite += entry.Value
+		}
+	}
+	h.DiskReadMB = float64(diskRead) / (1024 * 1024)
+	h.DiskWriteMB = float64(diskWrite) / (1024 * 1024)
+
+	return nil
 }
 
 // Endpoint returns the first exposed host port.
@@ -304,8 +369,15 @@ func (a *Adapter) Endpoint(ctx context.Context, projectID, workloadID string) (s
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
-	for _, bindings := range info.NetworkSettings.Ports {
-		if len(bindings) > 0 {
+	// Sort port keys so we always pick the lowest container port deterministically.
+	keys := make([]string, 0, len(info.NetworkSettings.Ports))
+	for k := range info.NetworkSettings.Ports {
+		keys = append(keys, string(k))
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		bindings := info.NetworkSettings.Ports[nat.Port(k)]
+		if len(bindings) > 0 && bindings[0].HostPort != "" {
 			return fmt.Sprintf("127.0.0.1:%s", bindings[0].HostPort), nil
 		}
 	}

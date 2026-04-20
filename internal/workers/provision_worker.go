@@ -64,6 +64,7 @@ func (w *ProvisionWorker) Handle(ctx context.Context, job *jobs.Job) error {
 		Status:     server.State,
 		NodeID:     server.Labels.NodeID,
 		RuntimeRef: server.RuntimeRef,
+		ProjectID:  spec.ProjectID,
 	}
 
 	if err := w.repository.Save(ctx, record); err != nil {
