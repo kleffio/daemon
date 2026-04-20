@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/kleffio/kleff-daemon/internal/adapters/out/db"
 	"github.com/kleffio/kleff-daemon/internal/adapters/out/observability/logging"
@@ -17,6 +18,8 @@ import (
 	k8sadapter "github.com/kleffio/kleff-daemon/internal/adapters/out/runtime/kubernetes"
 	"github.com/kleffio/kleff-daemon/internal/app/config"
 	"github.com/kleffio/kleff-daemon/internal/application/ports"
+	"github.com/kleffio/kleff-daemon/internal/logs"
+	"github.com/kleffio/kleff-daemon/internal/metrics"
 	"github.com/kleffio/kleff-daemon/internal/workers"
 	"github.com/kleffio/kleff-daemon/internal/workers/jobs"
 	"k8s.io/client-go/rest"
@@ -85,6 +88,13 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	scrapeInterval := time.Duration(cfg.MetricsScrapeInterval) * time.Second
+	scraper := metrics.NewScraper(runtime, repo, platformClient, scrapeInterval, cfg.NodeID, daemonLog)
+	go scraper.Run(ctx)
+
+	tailer := logs.NewTailer(runtime, repo, platformClient, daemonLog)
+	go tailer.Run(ctx)
 
 	dispatcher.Run(ctx)
 	daemonLog.Info("Daemon shutdown complete")

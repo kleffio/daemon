@@ -25,7 +25,8 @@ type Config struct {
 	ClusterRegion string       `mapstructure:"cluster.region"`
 	NodeID        string       `mapstructure:"node.id"`
 	GRPCPort      int          `mapstructure:"grpc.port"`
-	MetricsPort   int          `mapstructure:"metrics.port"`
+	MetricsPort            int          `mapstructure:"metrics.port"`
+	MetricsScrapeInterval int          `mapstructure:"metrics.scrape_interval"`
 	QueueBackend  QueueBackend `mapstructure:"queue.backend"`
 	DatabasePath  string       `mapstructure:"database.path"`
 	RedisURL      string       `mapstructure:"redis.url"`
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 	v.SetDefault("node.id", hostname)
 	v.SetDefault("grpc.port", 50051)
 	v.SetDefault("metrics.port", 9090)
+	v.SetDefault("metrics.scrape_interval", 30)
 	v.SetDefault("queue.backend", string(QueueBackendMemory))
 	v.SetDefault("database.path", "./data/kleff.db")
 	v.SetDefault("redis.url", "redis://localhost:6379/0")
@@ -116,6 +118,7 @@ func Load() (*Config, error) {
 	cfg.NodeID = v.GetString("node.id")
 	cfg.GRPCPort = v.GetInt("grpc.port")
 	cfg.MetricsPort = v.GetInt("metrics.port")
+	cfg.MetricsScrapeInterval = v.GetInt("metrics.scrape_interval")
 	cfg.QueueBackend = QueueBackend(v.GetString("queue.backend"))
 	cfg.DatabasePath = v.GetString("database.path")
 	cfg.RedisURL = v.GetString("redis.url")

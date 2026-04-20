@@ -10,6 +10,12 @@ type WorkloadStatusUpdate struct {
 	Endpoint     string
 	NodeID       string
 	ErrorMessage string
+	CPUMillicores int64
+	MemoryMB      int64
+	NetworkRxMB   float64
+	NetworkTxMB   float64
+	DiskReadMB    float64
+	DiskWriteMB   float64
 }
 
 type WorkloadStatusReporter interface {

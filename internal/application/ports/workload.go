@@ -67,6 +67,10 @@ type WorkloadHealth struct {
 	State         string `json:"state"` // running, stopped, failed
 	CPUMillicores int64  `json:"cpu_millicores"`
 	MemoryMB      int64  `json:"memory_mb"`
+	NetworkRxMB   float64 `json:"network_rx_mb"`
+	NetworkTxMB   float64 `json:"network_tx_mb"`
+	DiskReadMB    float64 `json:"disk_read_mb"`
+	DiskWriteMB   float64 `json:"disk_write_mb"`
 	// Game server extension (zero-valued for non-game workloads)
 	ActivePlayers int `json:"active_players,omitempty"`
 	// HTTP service extension

@@ -92,17 +92,61 @@ func (c *Client) RegisterNode(ctx context.Context) error {
 	return nil
 }
 
+func (c *Client) ShipLogs(ctx context.Context, workloadID, projectID string, lines []ports.LogEntry) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	type lineDTO struct {
+		Ts     string `json:"ts"`
+		Stream string `json:"stream"`
+		Line   string `json:"line"`
+	}
+	dtos := make([]lineDTO, len(lines))
+	for i, l := range lines {
+		dtos[i] = lineDTO{Ts: l.Ts.UTC().Format(time.RFC3339Nano), Stream: l.Stream, Line: l.Line}
+	}
+	payload := map[string]any{"project_id": projectID, "lines": dtos}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal log payload: %w", err)
+	}
+	url := fmt.Sprintf("%s/api/v1/internal/workloads/%s/log-lines", c.baseURL, workloadID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build log ship request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.nodeToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("log ship request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("log ship failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return nil
+}
+
 func (c *Client) ReportStatus(ctx context.Context, update ports.WorkloadStatusUpdate) error {
 	if c.nodeToken == "" {
 		return fmt.Errorf("node token is not set; call RegisterNode first")
 	}
 	payload := map[string]any{
-		"status":        update.Status,
-		"runtime_ref":   update.RuntimeRef,
-		"endpoint":      update.Endpoint,
-		"node_id":       update.NodeID,
-		"error_message": update.ErrorMessage,
-		"observed_at":   time.Now().UTC().Format(time.RFC3339),
+		"status":          update.Status,
+		"runtime_ref":     update.RuntimeRef,
+		"endpoint":        update.Endpoint,
+		"node_id":         update.NodeID,
+		"error_message":   update.ErrorMessage,
+		"observed_at":     time.Now().UTC().Format(time.RFC3339),
+		"cpu_millicores":  update.CPUMillicores,
+		"memory_mb":       update.MemoryMB,
+		"network_rx_mb":   update.NetworkRxMB,
+		"network_tx_mb":   update.NetworkTxMB,
+		"disk_read_mb":    update.DiskReadMB,
+		"disk_write_mb":   update.DiskWriteMB,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
