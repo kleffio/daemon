@@ -124,7 +124,7 @@ func detectRuntime(cfg *config.Config, logger ports.Logger) (ports.RuntimeAdapte
 	}
 
 	// No Kubernetes — check if Docker is actually reachable before using it.
-	dockerAdapter, err := dockeradapter.New(cfg.NodeID)
+	dockerAdapter, err := dockeradapter.New(cfg.NodeID, cfg.ComposeProject)
 	if err != nil {
 		return nil, fmt.Errorf("no runtime available: kubernetes not detected, docker client failed: %w", err)
 	}

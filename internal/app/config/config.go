@@ -32,8 +32,9 @@ type Config struct {
 	RedisURL      string       `mapstructure:"redis.url"`
 	RedisPassword string       `mapstructure:"redis.password"`
 	RedisTLS      bool         `mapstructure:"redis.tls"`
-	PlatformURL   string       `mapstructure:"platform.url"`
-	SharedSecret  string       `mapstructure:"shared_secret"`
+	PlatformURL    string       `mapstructure:"platform.url"`
+	SharedSecret   string       `mapstructure:"shared_secret"`
+	ComposeProject string       `mapstructure:"compose.project"`
 }
 
 func (c *Config) Validate() error {
@@ -81,6 +82,7 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.tls", false)
 	v.SetDefault("platform.url", "")
 	v.SetDefault("shared_secret", "")
+	v.SetDefault("compose.project", "")
 
 	v.SetEnvPrefix("kleff")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -126,6 +128,7 @@ func Load() (*Config, error) {
 	cfg.RedisTLS = v.GetBool("redis.tls")
 	cfg.PlatformURL = v.GetString("platform.url")
 	cfg.SharedSecret = v.GetString("shared_secret")
+	cfg.ComposeProject = v.GetString("compose.project")
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)

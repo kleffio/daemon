@@ -24,18 +24,19 @@ import (
 // All three strategies (agones, statefulset, deployment) map to the same
 // Docker container lifecycle — the strategy hint is ignored here.
 type Adapter struct {
-	client *client.Client
-	nodeID string
+	client         *client.Client
+	nodeID         string
+	composeProject string
 }
 
 var errContainerNotFound = errors.New("container not found")
 
-func New(nodeID string) (*Adapter, error) {
+func New(nodeID, composeProject string) (*Adapter, error) {
 	c, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker client: %w", err)
 	}
-	return &Adapter{client: c, nodeID: nodeID}, nil
+	return &Adapter{client: c, nodeID: nodeID, composeProject: composeProject}, nil
 }
 
 // Ping checks if the Docker daemon is reachable.
@@ -430,6 +431,9 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, 
 		ProjectSlug: spec.ProjectSlug,
 	}
 	containerLabels := wl.ToMap()
+	if a.composeProject != "" {
+		containerLabels["com.docker.compose.project"] = a.composeProject
+	}
 
 	resources := container.Resources{}
 	if spec.MemoryBytes > 0 {
@@ -466,6 +470,11 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, 
 		containerConfig.Cmd = []string{"sh", "-c", spec.Command}
 	}
 
+	containerName := spec.ServerID
+	if spec.OwnerUsername != "" && spec.ProjectSlug != "" && spec.ServerName != "" {
+		containerName = spec.OwnerUsername + "." + spec.ProjectSlug + "." + spec.ServerName
+	}
+
 	resp, err := a.client.ContainerCreate(ctx,
 		containerConfig,
 		&container.HostConfig{
@@ -475,7 +484,7 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, 
 		},
 		netConfig,
 		nil,
-		spec.ServerID,
+		containerName,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %w", err)
