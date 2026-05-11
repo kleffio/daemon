@@ -11,6 +11,10 @@ const (
 	ManagedBy   = "kleff.io/managed_by"
 
 	ManagedByValue = "kleff-daemon"
+
+	// ComposeProject is the standard Docker Compose label used by Portainer to group containers.
+	ComposeProject      = "com.docker.compose.project"
+	ComposeProjectValue = "kleff-local"
 )
 
 type WorkloadLabels struct {
@@ -24,12 +28,13 @@ type WorkloadLabels struct {
 
 func (l *WorkloadLabels) ToMap() map[string]string {
 	m := map[string]string{
-		OwnerID:     l.OwnerID,
-		WorkloadID:  l.ServerID, // new key
-		ServerID:    l.ServerID, // deprecated alias — kept during transition
-		BlueprintID: l.BlueprintID,
-		NodeID:      l.NodeID,
-		ManagedBy:   ManagedByValue,
+		OwnerID:        l.OwnerID,
+		WorkloadID:     l.ServerID, // new key
+		ServerID:       l.ServerID, // deprecated alias — kept during transition
+		BlueprintID:    l.BlueprintID,
+		NodeID:         l.NodeID,
+		ManagedBy:      ManagedByValue,
+		ComposeProject: ComposeProjectValue,
 	}
 	if l.ProjectID != "" {
 		m[ProjectID] = l.ProjectID
