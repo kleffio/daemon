@@ -475,7 +475,7 @@ func (a *Adapter) createContainer(ctx context.Context, spec ports.WorkloadSpec, 
 		},
 		netConfig,
 		nil,
-		spec.ServerID,
+		containerName(spec),
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %w", err)
@@ -561,4 +561,38 @@ func shortID(s string) string {
 		s = s[:12]
 	}
 	return s
+}
+
+// containerName builds a human-readable container name in the form
+// username.projectslug.servername, falling back gracefully when fields are absent.
+func containerName(spec ports.WorkloadSpec) string {
+	var parts []string
+	if spec.OwnerUsername != "" {
+		parts = append(parts, sanitizeNamePart(spec.OwnerUsername))
+	}
+	if spec.ProjectSlug != "" {
+		parts = append(parts, sanitizeNamePart(spec.ProjectSlug))
+	}
+	if spec.ServerName != "" {
+		parts = append(parts, sanitizeNamePart(spec.ServerName))
+	}
+	if len(parts) == 0 {
+		return spec.ServerID
+	}
+	return strings.Join(parts, ".")
+}
+
+// sanitizeNamePart strips characters not allowed in Docker container names.
+var nameReplacer = strings.NewReplacer(" ", "-", "@", "-", "/", "-")
+
+func sanitizeNamePart(s string) string {
+	s = nameReplacer.Replace(strings.ToLower(strings.TrimSpace(s)))
+	var out []byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.' {
+			out = append(out, c)
+		}
+	}
+	return strings.Trim(string(out), "-.")
 }
