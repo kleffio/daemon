@@ -141,6 +141,8 @@ func (q *RedisQueue) Retry(jobID string) error {
 	var job jobs.Job
 	json.Unmarshal([]byte(raw), &job)
 
+	job.Attempts++
+
 	if job.Attempts >= job.MaxAttempts {
 		job.Status = jobs.JobStatusFailed
 		newRaw, _ := json.Marshal(job)

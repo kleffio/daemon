@@ -569,3 +569,16 @@ func buildService(spec ports.WorkloadSpec, selectorLabels map[string]string) *co
 		},
 	}
 }
+
+
+func (a *Adapter) InjectFile(_ context.Context, _, _, _, _, _, _ string) error {
+	return fmt.Errorf("mod file injection is not yet supported on Kubernetes")
+}
+
+func (a *Adapter) RemoveFile(_ context.Context, _, _, _, _, _ string) error {
+	return fmt.Errorf("mod file removal is not yet supported on Kubernetes")
+}
+
+func (a *Adapter) ListRunning(_ context.Context) ([]*ports.ServerRecord, error) {
+	return nil, nil
+}

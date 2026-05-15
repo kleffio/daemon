@@ -14,6 +14,8 @@ const (
 	JobTypeServerStop      JobType = "server.stop"
 	JobTypeServerDelete    JobType = "server.delete"
 	JobTypeServerRestart   JobType = "server.restart"
+	JobTypeModInstall      JobType = "server.install_mod"
+	JobTypeModUninstall    JobType = "server.uninstall_mod"
 )
 
 const (
