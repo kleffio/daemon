@@ -69,6 +69,19 @@ func main() {
 	// --- Repository ---
 	repo := memrepo.NewServerRepository()
 
+	// Reseed the in-memory repository from any workloads that were running
+	// before this daemon process started (e.g. after a daemon restart).
+	if existing, err := runtime.ListRunning(context.Background()); err != nil {
+		daemonLog.Warn("Failed to recover running workloads on startup", "error", err)
+	} else {
+		for _, srv := range existing {
+			_ = repo.Save(context.Background(), srv)
+		}
+		if len(existing) > 0 {
+			daemonLog.Info("Recovered running workloads", "count", len(existing))
+		}
+	}
+
 	// --- Platform registration + status reporting ---
 	platformClient := platformadapter.NewClient(cfg.PlatformURL, cfg.SharedSecret, cfg.NodeID, daemonLog)
 	if err := platformClient.RegisterNode(context.Background()); err != nil {
@@ -83,6 +96,10 @@ func main() {
 	dispatcher.Register(jobs.JobTypeServerStop, workers.NewStopWorker(runtime, repo, daemonLog, platformClient).Handle)
 	dispatcher.Register(jobs.JobTypeServerDelete, workers.NewDeleteWorker(runtime, repo, daemonLog, platformClient).Handle)
 	dispatcher.Register(jobs.JobTypeServerRestart, workers.NewRestartWorker(runtime, repo, daemonLog, platformClient).Handle)
+
+	modWorker := workers.NewModWorker(runtime, daemonLog)
+	dispatcher.Register(jobs.JobTypeModInstall, modWorker.HandleInstall)
+	dispatcher.Register(jobs.JobTypeModUninstall, modWorker.HandleUninstall)
 
 	daemonLog.Info("Daemon started", "node_id", cfg.NodeID, "grpc_port", cfg.GRPCPort)
 
@@ -124,7 +141,7 @@ func detectRuntime(cfg *config.Config, logger ports.Logger) (ports.RuntimeAdapte
 	}
 
 	// No Kubernetes — check if Docker is actually reachable before using it.
-	dockerAdapter, err := dockeradapter.New(cfg.NodeID)
+	dockerAdapter, err := dockeradapter.New(cfg.NodeID, cfg.StoragePath)
 	if err != nil {
 		return nil, fmt.Errorf("no runtime available: kubernetes not detected, docker client failed: %w", err)
 	}

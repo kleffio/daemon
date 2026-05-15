@@ -34,6 +34,7 @@ type Config struct {
 	RedisTLS      bool         `mapstructure:"redis.tls"`
 	PlatformURL   string       `mapstructure:"platform.url"`
 	SharedSecret  string       `mapstructure:"shared_secret"`
+	StoragePath   string       `mapstructure:"storage.path"`
 }
 
 func (c *Config) Validate() error {
@@ -81,6 +82,7 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.tls", false)
 	v.SetDefault("platform.url", "")
 	v.SetDefault("shared_secret", "")
+	v.SetDefault("storage.path", "/var/lib/kleffd/servers")
 
 	v.SetEnvPrefix("kleff")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -126,6 +128,7 @@ func Load() (*Config, error) {
 	cfg.RedisTLS = v.GetBool("redis.tls")
 	cfg.PlatformURL = v.GetString("platform.url")
 	cfg.SharedSecret = v.GetString("shared_secret")
+	cfg.StoragePath = v.GetString("storage.path")
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)

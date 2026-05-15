@@ -46,7 +46,7 @@ func NewTailer(
 // Run blocks until ctx is cancelled, reconciling the set of active tailers
 // every 10 seconds to match the set of running workloads.
 func (t *Tailer) Run(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	// Reconcile immediately on start.
 	t.reconcile(ctx)
@@ -140,8 +140,11 @@ func (t *Tailer) tail(ctx context.Context, workloadID, projectID string) {
 
 	lines := make(chan ports.LogEntry, 256)
 
-	go scanStream(ctx, stdoutR, "stdout", lines)
-	go scanStream(ctx, stderrR, "stderr", lines)
+	var scanWg sync.WaitGroup
+	scanWg.Add(2)
+	go func() { defer scanWg.Done(); scanStream(ctx, stdoutR, "stdout", lines) }()
+	go func() { defer scanWg.Done(); scanStream(ctx, stderrR, "stderr", lines) }()
+	go func() { scanWg.Wait(); close(lines) }()
 
 	for {
 		select {

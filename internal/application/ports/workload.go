@@ -62,6 +62,25 @@ type RuntimeHints struct {
 	StorageGB          int    `json:"storage_gb,omitempty"`
 }
 
+// ModInstallSpec is the payload for server.install_mod jobs.
+type ModInstallSpec struct {
+	ServerID    string `json:"server_id"`
+	ProjectID   string `json:"project_id"`
+	DownloadURL string `json:"download_url"`
+	FileName    string `json:"file_name"`
+	ContentType string `json:"content_type"` // "mod", "plugin", "datapack", "resourcepack"
+	StoragePath string `json:"storage_path"` // base mount path, e.g. "/data"
+}
+
+// ModUninstallSpec is the payload for server.uninstall_mod jobs.
+type ModUninstallSpec struct {
+	ServerID    string `json:"server_id"`
+	ProjectID   string `json:"project_id"`
+	FileName    string `json:"file_name"`
+	ContentType string `json:"content_type"`
+	StoragePath string `json:"storage_path"`
+}
+
 // WorkloadHealth is the per-workload status reported in heartbeats.
 type WorkloadHealth struct {
 	WorkloadID    string `json:"workload_id"`

@@ -43,4 +43,17 @@ type RuntimeAdapter interface {
 	Endpoint(ctx context.Context, projectID, workloadID string) (string, error)
 	// Logs streams the workload's stdout/stderr.
 	Logs(ctx context.Context, projectID, workloadID string, follow bool) (io.ReadCloser, error)
+
+	// InjectFile downloads a file from downloadURL and writes it into the
+	// workload's persistent volume under the appropriate content-type subdirectory.
+	// storagePath is the volume's mount point inside the container (e.g. "/data").
+	InjectFile(ctx context.Context, projectID, workloadID, storagePath, contentType, downloadURL, fileName string) error
+
+	// RemoveFile deletes a previously injected file from the workload's volume.
+	RemoveFile(ctx context.Context, projectID, workloadID, storagePath, contentType, fileName string) error
+
+	// ListRunning returns server records for all workloads currently managed by
+	// this daemon that are in a running state. Used to reseed the in-memory
+	// repository after a daemon restart.
+	ListRunning(ctx context.Context) ([]*ServerRecord, error)
 }
